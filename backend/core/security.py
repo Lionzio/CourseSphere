@@ -1,10 +1,10 @@
+# core/security.py
 from datetime import datetime, timedelta
 from typing import Optional
-from jose import jwt
+import jwt  # pyjwt
 from passlib.context import CryptContext
 from core.config import settings
 
-# Configuração do Passlib para usar o Bcrypt
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -27,9 +27,5 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         expire = datetime.utcnow() + timedelta(
             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
         )
-
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(
-        to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM
-    )
-    return encoded_jwt
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
