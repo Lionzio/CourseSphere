@@ -1,6 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/auth';
 
+// Importação das páginas reais de autenticação
+import { Login } from './pages/Login';
+import { Register } from './pages/Register';
+
 // Importação dos assets mantendo a identidade visual
 import reactLogo from './assets/react.svg';
 import viteLogo from './assets/vite.svg';
@@ -11,7 +15,7 @@ import './App.css';
  * Layout Base para as páginas Placeholder
  * Une a estética do CourseSphere com a lógica de roteamento.
  */
-const PageLayout = ({ title, showHero = false }: { title: string; showHero?: boolean }) => (
+const PageLayout = ({ title }: { title: string }) => (
   <>
     <section id="center">
       <div className="hero">
@@ -50,8 +54,8 @@ function App() {
     <BrowserRouter>
       <Routes>
         {/* Rotas Públicas */}
-        <Route path="/login" element={<PageLayout title="Login" />} />
-        <Route path="/register" element={<PageLayout title="Registro" />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
 
         {/* Rotas Protegidas - Redirecionam para /login se não houver token */}
         <Route
