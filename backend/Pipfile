@@ -19,6 +19,9 @@ email-validator = "*"
 [dev-packages]
 black = "*"
 flake8 = "*"
+pytest = "*"
+httpx = "*"
+pytest-asyncio = "*"
 
 [requires]
 python_version = "3.11"
