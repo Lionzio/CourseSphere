@@ -11,6 +11,10 @@ asyncpg = "*"
 alembic = "*"
 pydantic-settings = "*"
 python-dotenv = "*"
+passlib = {extras = ["bcrypt"], version = "*"}
+pyjwt = "*"
+python-multipart = "*"
+email-validator = "*"
 
 [dev-packages]
 black = "*"
