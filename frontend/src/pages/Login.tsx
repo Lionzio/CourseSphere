@@ -2,9 +2,16 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { jwtDecode } from 'jwt-decode';
 import api from '../services/api';
-import { useAuthStore } from '../stores/auth';
+import { useAuthStore, type Role } from '../stores/auth';
 import { loginSchema, type LoginFormValues } from '../schemas/auth';
+
+interface JwtPayload {
+  sub: string;
+  role: Role;
+  exp: number;
+}
 
 export function Login() {
   const navigate = useNavigate();
@@ -16,12 +23,25 @@ export function Login() {
   const onSubmit = async (data: LoginFormValues) => {
     try {
       const formData = new FormData();
-      formData.append('username', data.email); // OAuth2 usa username
+      formData.append('username', data.email); // OAuth2 espera 'username'
       formData.append('password', data.password);
 
       const response = await api.post('/auth/login', formData);
-      setAuth(response.data.access_token, { id: 0, name: 'Usuário', email: data.email });
-      toast.success('Bem-vindo de volta!');
+      const token = response.data.access_token;
+      
+      // Decodifica o token para feedback imediato na interface
+      const decoded = jwtDecode<JwtPayload>(token);
+
+      // Guarda no Zustand (que também injetará o role no estado global)
+      setAuth(token, { id: 0, name: 'Usuário', email: data.email });
+
+      // Dispara o Toast dinâmico baseado no RBAC
+      if (decoded.role === 'admin' || decoded.role === 'teacher') {
+        toast.success('Bem-vindo! Modo professor ativado.', { icon: '👨‍🏫', duration: 4000 });
+      } else {
+        toast.success('Bem-vindo! Modo estudante ativado.', { icon: '🎓', duration: 4000 });
+      }
+
       navigate('/dashboard');
     } catch {
       toast.error('E-mail ou senha incorretos.');

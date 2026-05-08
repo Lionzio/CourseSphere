@@ -3,18 +3,17 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/auth';
 import './App.css';
 
-// Importação dos assets mantendo a identidade visual
+// Importação dos assets
 import reactLogo from './assets/react.svg';
 import viteLogo from './assets/vite.svg';
 import heroImg from './assets/hero.png';
 
-// Lazy loading das páginas (Otimização de Performance / Code Splitting)
-// Como utilizamos named exports nas páginas, mapeamos para 'default'
+// Lazy loading das páginas (Otimização de Performance)
 const Login = lazy(() => import('./pages/Login').then((m) => ({ default: m.Login })));
 const Register = lazy(() => import('./pages/Register').then((m) => ({ default: m.Register })));
 const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })));
+const AdminPanel = lazy(() => import('./pages/AdminPanel').then((m) => ({ default: m.AdminPanel })));
 
-// Fallback de carregamento elegante enquanto o chunk da página é baixado
 const PageLoader = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column', gap: '1rem' }}>
     <img src={viteLogo} alt="Carregando" width="50" style={{ animation: 'pulse 1.5s infinite' }} />
@@ -22,24 +21,12 @@ const PageLoader = () => (
   </div>
 );
 
-/**
- * Componente HOC (Higher-Order Component) para blindagem de rotas.
- * Centraliza a regra de negócio de autorização da interface.
- */
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const token = useAuthStore((state) => state.token);
-  
-  if (!token) {
-    // O 'replace' substitui o histórico, impedindo que o usuário volte com o botão "Back" do navegador
-    return <Navigate to="/login" replace />;
-  }
-
+  if (!token) return <Navigate to="/login" replace />;
   return <>{children}</>;
 };
 
-/**
- * Layout Base para as páginas que ainda estão em desenvolvimento
- */
 const PageLayout = ({ title }: { title: string }) => (
   <>
     <section id="center">
@@ -65,11 +52,9 @@ function App() {
     <BrowserRouter>
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          {/* Rotas Públicas - Redirecionam para o Dashboard se o usuário já estiver logado */}
           <Route path="/login" element={token ? <Navigate to="/dashboard" replace /> : <Login />} />
           <Route path="/register" element={token ? <Navigate to="/dashboard" replace /> : <Register />} />
 
-          {/* Rotas Protegidas - O uso do ProtectedRoute limpa a leitura do código */}
           <Route
             path="/dashboard"
             element={
@@ -78,6 +63,16 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <AdminPanel />
+              </ProtectedRoute>
+            }
+          />
+
           <Route
             path="/courses/:id"
             element={
@@ -87,10 +82,7 @@ function App() {
             }
           />
 
-          {/* Redirecionamento Inteligente na Raiz */}
           <Route path="/" element={<Navigate to={token ? "/dashboard" : "/login"} replace />} />
-
-          {/* Fallback Catch-All (Página 404 invisível) */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
