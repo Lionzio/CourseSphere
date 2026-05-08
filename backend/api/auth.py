@@ -14,7 +14,7 @@ router = APIRouter()
     "/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED
 )
 async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
-    """Registra um novo usuário no sistema."""
+    """Registra um novo usuário no sistema e atribui o papel (role) base."""
     db_user = await get_user_by_email(db, email=user.email)
     if db_user:
         raise HTTPException(
@@ -28,8 +28,8 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)
 ):
-    """Autentica o usuário e retorna um JWT."""
-    # O OAuth2 form usa 'username' por padrão, mas mapearemos para o email
+    """Autentica o usuário e retorna um JWT contendo o ID e o Papel (Role)."""
+    # O OAuth2 form usa 'username' por padrão, mas mapeamos para o email
     user = await get_user_by_email(db, email=form_data.username)
     if not user or not verify_password(form_data.password, user.password):
         raise HTTPException(
@@ -38,5 +38,9 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token = create_access_token(data={"sub": str(user.id)})
+    # Injeção do 'role' no payload do JWT para suportar o RBAC no Frontend
+    access_token = create_access_token(
+        data={"sub": str(user.id), "role": user.role.value}
+    )
+
     return {"access_token": access_token, "token_type": "bearer"}
