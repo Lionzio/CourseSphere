@@ -1,6 +1,6 @@
 import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useAuthStore } from './stores/auth';
+import { useAuthStore, type Role } from './stores/auth';
 import './App.css';
 
 import viteLogo from './assets/vite.svg';
@@ -10,8 +10,6 @@ const Login = lazy(() => import('./pages/Login').then((m) => ({ default: m.Login
 const Register = lazy(() => import('./pages/Register').then((m) => ({ default: m.Register })));
 const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })));
 const AdminPanel = lazy(() => import('./pages/AdminPanel').then((m) => ({ default: m.AdminPanel })));
-
-// Nova Importação: O componente real de Detalhes do Curso
 const CourseDetails = lazy(() => import('./pages/CourseDetails').then((m) => ({ default: m.CourseDetails })));
 
 const PageLoader = () => (
@@ -21,9 +19,21 @@ const PageLoader = () => (
   </div>
 );
 
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+// Route Guard Granular (RBAC)
+// Agora aceita um array opcional de papéis (roles) autorizados
+const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: Role[] }) => {
   const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
+
+  // 1. Verificação de Autenticação Base
   if (!token) return <Navigate to="/login" replace />;
+
+  // 2. Verificação de Autorização (RBAC)
+  // Se a rota exige papéis específicos e o utilizador não os tem, é redirecionado silenciosamente
+  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return <>{children}</>;
 };
 
@@ -46,16 +56,16 @@ function App() {
             }
           />
 
+          {/* Rota estritamente blindada: Componente protegido antes da montagem */}
           <Route
             path="/admin"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['admin']}>
                 <AdminPanel />
               </ProtectedRoute>
             }
           />
 
-          {/* Rota Atualizada: Agora aponta para o componente CourseDetails verdadeiro */}
           <Route
             path="/courses/:id"
             element={

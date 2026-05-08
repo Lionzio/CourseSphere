@@ -5,6 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 # Importação da base de dados para a criação automática das tabelas
 from core.database import engine, Base
 
+# Registro explícito dos modelos no SQLAlchemy (Garante a criação via Base.metadata)
+from models.audit_log import AuditLog  # noqa: F401
+
 # Importação dos roteadores
 from api.auth import router as auth_router
 from api.courses import router as courses_router

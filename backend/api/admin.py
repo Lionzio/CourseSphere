@@ -9,6 +9,9 @@ from schemas.user import UserResponse
 from api.deps import get_current_admin
 from crud.user import get_user_by_id
 
+# Nova Importação: O nosso módulo de auditoria
+from crud.audit import log_audit_action
+
 router = APIRouter()
 
 
@@ -36,7 +39,7 @@ async def promote_user(
 ):
     """
     Endpoint exclusivo do Administrador (RBAC).
-    Permite alterar o papel (Role) de qualquer utilizador registado no sistema.
+    Permite alterar o papel (Role) de qualquer utilizador registado no sistema, com registo de auditoria.
     """
     # 1. Busca o utilizador alvo
     user = await get_user_by_id(db, user_id)
@@ -45,25 +48,52 @@ async def promote_user(
             status_code=status.HTTP_404_NOT_FOUND, detail="Utilizador não encontrado."
         )
 
-    # 2. BLINDAGEM MÁXIMA: Proteção da Conta Mestre (Super Admin Invulnerável)
+    # 2. BLINDAGEM MÁXIMA: Proteção da Conta Mestre
     if user.email == "viniciusleoncio3267@gmail.com" and role != Role.admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Operação bloqueada: A conta mestre é imutável e não pode perder o status de Administrador.",
         )
 
-    # 3. Blindagem de Segurança: Impede que qualquer outro Admin se auto-despromova
+    # 3. Blindagem de Segurança: Impede que o Admin se auto-despromova
     if user.id == admin.id and role != Role.admin:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Operação inválida: Não pode remover os seus próprios privilégios de administrador.",
         )
 
-    # 4. Atualização do estado na base de dados
+    # 4. Captura o estado anterior para o Log de Auditoria
+    old_role = user.role.value
+    new_role = role.value
+
+    # Se não houve alteração real, não precisamos gastar processamento ou poluir o log
+    if old_role == new_role:
+        return {
+            "status": "success",
+            "message": f"O utilizador já possui o papel '{new_role}'.",
+        }
+
+    # 5. Atualização do estado na base de dados
     user.role = role
     await db.commit()
 
+    # 6. Registo de Auditoria (Fire and Forget)
+    # Aqui passamos 'admin.id' porque foi o Admin quem executou a ação,
+    # e 'user.id' como a entidade afetada.
+    await log_audit_action(
+        db=db,
+        user_id=admin.id,
+        action="UPDATE_ROLE",
+        entity_name="User",
+        entity_id=user.id,
+        details={
+            "target_email": user.email,
+            "old_role": old_role,
+            "new_role": new_role,
+        },
+    )
+
     return {
         "status": "success",
-        "message": f"O papel do utilizador {user.email} foi atualizado para '{role.value}'.",
+        "message": f"O papel do utilizador {user.email} foi atualizado de '{old_role}' para '{new_role}'.",
     }
