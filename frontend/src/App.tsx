@@ -3,16 +3,16 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/auth';
 import './App.css';
 
-// Importação dos assets
-import reactLogo from './assets/react.svg';
 import viteLogo from './assets/vite.svg';
-import heroImg from './assets/hero.png';
 
 // Lazy loading das páginas (Otimização de Performance)
 const Login = lazy(() => import('./pages/Login').then((m) => ({ default: m.Login })));
 const Register = lazy(() => import('./pages/Register').then((m) => ({ default: m.Register })));
 const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })));
 const AdminPanel = lazy(() => import('./pages/AdminPanel').then((m) => ({ default: m.AdminPanel })));
+
+// Nova Importação: O componente real de Detalhes do Curso
+const CourseDetails = lazy(() => import('./pages/CourseDetails').then((m) => ({ default: m.CourseDetails })));
 
 const PageLoader = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column', gap: '1rem' }}>
@@ -26,24 +26,6 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   if (!token) return <Navigate to="/login" replace />;
   return <>{children}</>;
 };
-
-const PageLayout = ({ title }: { title: string }) => (
-  <>
-    <section id="center">
-      <div className="hero">
-        <img src={heroImg} className="base" width="170" height="179" alt="CourseSphere Hero" />
-        <img src={reactLogo} className="framework" alt="React logo" />
-        <img src={viteLogo} className="vite" alt="Vite logo" />
-      </div>
-      <div>
-        <h1>{title}</h1>
-        <p>Módulo em desenvolvimento para a próxima Sprint...</p>
-      </div>
-    </section>
-    <div className="ticks"></div>
-    <section id="spacer"></section>
-  </>
-);
 
 function App() {
   const token = useAuthStore((state) => state.token);
@@ -73,11 +55,12 @@ function App() {
             }
           />
 
+          {/* Rota Atualizada: Agora aponta para o componente CourseDetails verdadeiro */}
           <Route
             path="/courses/:id"
             element={
               <ProtectedRoute>
-                <PageLayout title="Gestão de Aulas do Curso" />
+                <CourseDetails />
               </ProtectedRoute>
             }
           />
