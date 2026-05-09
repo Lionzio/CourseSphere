@@ -15,7 +15,8 @@ from api.courses import router as courses_router
 from api.lessons import router as lessons_router
 from api.admin import router as admin_router
 from api.enrollments import router as enrollments_router
-from api.materials import router as materials_router  # <--- Novo Roteador
+from api.materials import router as materials_router
+from api.quizzes import router as quizzes_router
 
 
 @asynccontextmanager
@@ -78,6 +79,9 @@ app.include_router(
 app.include_router(
     materials_router, prefix="/api/v1", tags=["Gestão de Materiais de Apoio"]
 )
+
+# Registro do roteador de avaliações
+app.include_router(quizzes_router, prefix="/api/v1", tags=["Motor de Avaliações"])
 
 
 @app.get("/", tags=["Healthcheck"])

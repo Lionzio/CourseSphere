@@ -5,7 +5,10 @@ from .course import Course
 from .lesson import Lesson
 from .enrollment import Enrollment
 from .lesson_progress import LessonProgress
-from .material import Material  # <--- Nova importação
+from .material import Material
+
+# Importação do agregado do Motor de Avaliações
+from .quiz import Quiz, Question, Option
 
 __all__ = [
     "Base",
@@ -15,4 +18,7 @@ __all__ = [
     "Enrollment",
     "LessonProgress",
     "Material",
+    "Quiz",
+    "Question",
+    "Option",
 ]

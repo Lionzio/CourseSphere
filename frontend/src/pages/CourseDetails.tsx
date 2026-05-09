@@ -6,6 +6,7 @@ import api from '../services/api';
 import { useAuthStore } from '../stores/auth';
 import { CreateLessonModal } from '../components/CreateLessonModal';
 import { CreateMaterialModal } from '../components/CreateMaterialModal';
+import { CreateQuizModal } from '../components/CreateQuizModal'; // <--- Nova Importação
 import type { Course } from '../schemas/course';
 import type { Lesson } from '../schemas/lesson';
 import type { Enrollment } from '../schemas/enrollment';
@@ -18,7 +19,6 @@ interface GuestInstructor {
 
 type StatusFilter = 'all' | 'published' | 'draft';
 
-// Utilitário para renderizar o ícone correto baseado no tipo do material
 const getMaterialIcon = (type: string) => {
   switch (type) {
     case 'pdf': return '📄';
@@ -42,10 +42,12 @@ export function CourseDetails() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeLessonIdForMaterial, setActiveLessonIdForMaterial] = useState<number | null>(null);
   
+  // <--- Novo Estado para o Motor de Avaliações --->
+  const [activeLessonIdForQuiz, setActiveLessonIdForQuiz] = useState<number | null>(null);
+  
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [instructor, setInstructor] = useState<GuestInstructor | null>(null);
 
-  // Estados do Motor de Progressão
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [completedLessons, setCompletedLessons] = useState<number[]>([]);
   const [completionPercentage, setCompletionPercentage] = useState<number>(0);
@@ -66,7 +68,6 @@ export function CourseDetails() {
       const visibleLessons = canManage ? fetchedLessons : fetchedLessons.filter(l => l.status === 'published');
       setLessons(visibleLessons);
 
-      // --- Overdelivering: Prevenção de N+1 e Busca Paralela de Materiais ---
       if (visibleLessons.length > 0) {
         const materialsPromises = visibleLessons.map(l => api.get(`/lessons/${l.id}/materials`));
         const materialsResponses = await Promise.allSettled(materialsPromises);
@@ -168,7 +169,6 @@ export function CourseDetails() {
 
   return (
     <div style={{ padding: '2rem', maxWidth: '900px', margin: '0 auto', textAlign: 'left', width: '100%' }}>
-      {/* Cabeçalho */}
       <div style={{ marginBottom: '2rem', borderBottom: '1px solid var(--border)', paddingBottom: '1.5rem' }}>
         <button onClick={() => navigate('/dashboard')} style={{ marginBottom: '1rem', background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', padding: 0 }}>
           ← Voltar ao Painel
@@ -207,7 +207,6 @@ export function CourseDetails() {
         </div>
       )}
 
-      {/* Controlos de Aulas */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <h3 style={{ margin: 0 }}>Conteúdo Programático ({filteredLessons.length})</h3>
         
@@ -263,23 +262,33 @@ export function CourseDetails() {
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', flexWrap: 'wrap' }}>
+                    
+                    {/* Botões do Professor */}
                     {canManage && (
-                      <button onClick={() => setActiveLessonIdForMaterial(lesson.id)} style={{ background: 'var(--social-bg)', border: '1px solid var(--border)', color: 'var(--text)', cursor: 'pointer', padding: '0.4rem 0.8rem', borderRadius: '4px', fontSize: '12px' }}>
-                        + Anexar Material
-                      </button>
+                      <>
+                        <button onClick={() => setActiveLessonIdForMaterial(lesson.id)} style={{ background: 'var(--social-bg)', border: '1px solid var(--border)', color: 'var(--text)', cursor: 'pointer', padding: '0.4rem 0.8rem', borderRadius: '4px', fontSize: '12px' }}>
+                          + Anexar Material
+                        </button>
+                        <button onClick={() => setActiveLessonIdForQuiz(lesson.id)} style={{ background: 'transparent', border: '1px dashed var(--accent)', color: 'var(--accent)', cursor: 'pointer', padding: '0.4rem 0.8rem', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>
+                          📝 Criar Avaliação
+                        </button>
+                      </>
                     )}
+                    
+                    {/* Botões do Aluno */}
                     {enrollment && !canManage && (
                       <button onClick={() => handleMarkAsComplete(lesson.id)} disabled={isCompleted} style={{ background: isCompleted ? '#2e7d32' : 'transparent', color: isCompleted ? 'white' : 'var(--text)', border: isCompleted ? 'none' : '1px solid var(--border)', cursor: isCompleted ? 'default' : 'pointer', padding: '0.4rem 0.8rem', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', transition: 'all 0.3s ease' }}>
                         {isCompleted ? '✓ Concluída' : 'Marcar como Concluída'}
                       </button>
                     )}
+                    
+                    {/* Lixeira (Professor) */}
                     {canManage && (
                       <button onClick={() => handleDeleteLesson(lesson.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.1rem' }} title="Excluir aula">🗑️</button>
                     )}
                   </div>
                 </div>
 
-                {/* --- Sub-Lista Dinâmica de Materiais --- */}
                 {lessonMaterials.length > 0 && (
                   <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed var(--border)' }}>
                     <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '0.5rem', color: 'var(--text)' }}>Materiais de Apoio:</div>
@@ -303,13 +312,19 @@ export function CourseDetails() {
         </div>
       )}
 
-      {/* Modais de Criação */}
+      {/* Modais da Aplicação */}
       {isModalOpen && canManage && (
         <CreateLessonModal courseId={Number(id)} onClose={() => setIsModalOpen(false)} onSuccess={fetchData} />
       )}
       {activeLessonIdForMaterial !== null && canManage && (
         <CreateMaterialModal lessonId={activeLessonIdForMaterial} onClose={() => setActiveLessonIdForMaterial(null)} onSuccess={fetchData} />
       )}
+      
+      {/* <--- O Modal do Motor de Avaliações ---> */}
+      {activeLessonIdForQuiz !== null && canManage && (
+        <CreateQuizModal lessonId={activeLessonIdForQuiz} onClose={() => setActiveLessonIdForQuiz(null)} onSuccess={fetchData} />
+      )}
+
     </div>
   );
 }

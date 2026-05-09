@@ -14,7 +14,12 @@ class Lesson(Base):
 
     course = relationship("Course", back_populates="lessons")
 
-    # Nova relação bidirecional com a tabela de materiais (CASCADE garante limpeza automática)
+    # Relação com materiais de apoio
     materials = relationship(
         "Material", back_populates="lesson", cascade="all, delete-orphan"
+    )
+
+    # Nova relação 1-para-1 com o Motor de Avaliações (uselist=False)
+    quiz = relationship(
+        "Quiz", back_populates="lesson", uselist=False, cascade="all, delete-orphan"
     )
