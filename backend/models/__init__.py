@@ -10,6 +10,9 @@ from .material import Material
 # Importação do agregado do Motor de Avaliações
 from .quiz import Quiz, Question, Option
 
+# Importação do Motor de Resolução (Sprint 5)
+from .attempt import QuizAttempt, StudentAnswer
+
 __all__ = [
     "Base",
     "User",
@@ -21,4 +24,6 @@ __all__ = [
     "Quiz",
     "Question",
     "Option",
+    "QuizAttempt",
+    "StudentAnswer",
 ]

@@ -6,7 +6,8 @@ import api from '../services/api';
 import { useAuthStore } from '../stores/auth';
 import { CreateLessonModal } from '../components/CreateLessonModal';
 import { CreateMaterialModal } from '../components/CreateMaterialModal';
-import { CreateQuizModal } from '../components/CreateQuizModal'; // <--- Nova Importação
+import { CreateQuizModal } from '../components/CreateQuizModal';
+import { TakeQuizModal } from '../components/TakeQuizModal'; // <--- Importação do Modal do Aluno
 import type { Course } from '../schemas/course';
 import type { Lesson } from '../schemas/lesson';
 import type { Enrollment } from '../schemas/enrollment';
@@ -42,8 +43,9 @@ export function CourseDetails() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeLessonIdForMaterial, setActiveLessonIdForMaterial] = useState<number | null>(null);
   
-  // <--- Novo Estado para o Motor de Avaliações --->
-  const [activeLessonIdForQuiz, setActiveLessonIdForQuiz] = useState<number | null>(null);
+  // Estados para os Modais de Avaliação
+  const [activeLessonIdForQuiz, setActiveLessonIdForQuiz] = useState<number | null>(null); // Professor
+  const [activeLessonIdForTakeQuiz, setActiveLessonIdForTakeQuiz] = useState<number | null>(null); // Aluno
   
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [instructor, setInstructor] = useState<GuestInstructor | null>(null);
@@ -277,9 +279,14 @@ export function CourseDetails() {
                     
                     {/* Botões do Aluno */}
                     {enrollment && !canManage && (
-                      <button onClick={() => handleMarkAsComplete(lesson.id)} disabled={isCompleted} style={{ background: isCompleted ? '#2e7d32' : 'transparent', color: isCompleted ? 'white' : 'var(--text)', border: isCompleted ? 'none' : '1px solid var(--border)', cursor: isCompleted ? 'default' : 'pointer', padding: '0.4rem 0.8rem', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', transition: 'all 0.3s ease' }}>
-                        {isCompleted ? '✓ Concluída' : 'Marcar como Concluída'}
-                      </button>
+                      <>
+                        <button onClick={() => setActiveLessonIdForTakeQuiz(lesson.id)} style={{ background: 'transparent', border: '1px dashed var(--accent)', color: 'var(--accent)', cursor: 'pointer', padding: '0.4rem 0.8rem', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>
+                          📝 Avaliação
+                        </button>
+                        <button onClick={() => handleMarkAsComplete(lesson.id)} disabled={isCompleted} style={{ background: isCompleted ? '#2e7d32' : 'transparent', color: isCompleted ? 'white' : 'var(--text)', border: isCompleted ? 'none' : '1px solid var(--border)', cursor: isCompleted ? 'default' : 'pointer', padding: '0.4rem 0.8rem', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', transition: 'all 0.3s ease' }}>
+                          {isCompleted ? '✓ Concluída' : 'Marcar como Concluída'}
+                        </button>
+                      </>
                     )}
                     
                     {/* Lixeira (Professor) */}
@@ -320,9 +327,14 @@ export function CourseDetails() {
         <CreateMaterialModal lessonId={activeLessonIdForMaterial} onClose={() => setActiveLessonIdForMaterial(null)} onSuccess={fetchData} />
       )}
       
-      {/* <--- O Modal do Motor de Avaliações ---> */}
+      {/* Modal do Professor (Construir Prova) */}
       {activeLessonIdForQuiz !== null && canManage && (
         <CreateQuizModal lessonId={activeLessonIdForQuiz} onClose={() => setActiveLessonIdForQuiz(null)} onSuccess={fetchData} />
+      )}
+
+      {/* Modal do Aluno (Fazer a Prova / Ver Boletim) */}
+      {activeLessonIdForTakeQuiz !== null && !canManage && (
+        <TakeQuizModal lessonId={activeLessonIdForTakeQuiz} onClose={() => setActiveLessonIdForTakeQuiz(null)} onSuccess={fetchData} />
       )}
 
     </div>

@@ -62,3 +62,21 @@ export interface QuizResponse {
   title: string;
   questions: QuestionResponse[];
 }
+
+export interface StudentAnswerResponse {
+  id: number;
+  question_id: number;
+  selected_option_id: number | null;
+  text_answer: string | null;
+  is_correct: boolean | null;
+}
+
+export interface QuizAttemptResponse {
+  id: number;
+  user_id: number;
+  quiz_id: number;
+  score: number;
+  started_at: string;
+  completed_at: string | null;
+  answers: StudentAnswerResponse[];
+}
