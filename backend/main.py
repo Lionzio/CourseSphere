@@ -1,16 +1,21 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# Importação da base de dados para a criação automática das tabelas
 from core.database import engine, Base
+
+# Registro explícito dos modelos no SQLAlchemy (Garante a criação via Base.metadata)
 from models.audit_log import AuditLog  # noqa: F401
+from models.material import Material  # noqa: F401
 
 # Importação dos roteadores
 from api.auth import router as auth_router
 from api.courses import router as courses_router
 from api.lessons import router as lessons_router
 from api.admin import router as admin_router
-
 from api.enrollments import router as enrollments_router
+from api.materials import router as materials_router  # <--- Novo Roteador
 
 
 @asynccontextmanager
@@ -30,12 +35,12 @@ app = FastAPI(
     title="CourseSphere API",
     description="""
     API avançada de gestão de cursos e aulas com arquitetura Multitenant e RBAC.
-    - **Estudantes:** Podem consumir conteúdos.
-    - **Professores:** Podem gerir os seus próprios cursos e aulas (Isolamento de Dados).
-    - **Admin:** Pode promover utilizadores.
+    - **Estudantes:** Podem consumir conteúdos e materiais de apoio.
+    - **Professores:** Podem gerir os seus próprios cursos, aulas e anexos.
+    - **Admin:** Pode promover utilizadores e moderar todo o conteúdo.
     """,
     version="1.0.0",
-    lifespan=lifespan,  # <--- Evento de ciclo de vida ativado
+    lifespan=lifespan,
     contact={
         "name": "Vinícius Leôncio",
         "url": "https://github.com/Lionzio",
@@ -53,8 +58,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Permite GET, POST, PUT, DELETE, OPTIONS, etc.
-    allow_headers=["*"],  # Permite envio de Headers como Authorization (JWT)
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Registo dos roteadores com prefixos e tags para organização do Swagger
@@ -68,6 +73,10 @@ app.include_router(
     enrollments_router,
     prefix="/api/v1/enrollments",
     tags=["Matrículas & Progresso"],
+)
+# Registro do roteador de materiais (Mantendo o padrão v1)
+app.include_router(
+    materials_router, prefix="/api/v1", tags=["Gestão de Materiais de Apoio"]
 )
 
 

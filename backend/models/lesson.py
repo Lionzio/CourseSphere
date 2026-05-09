@@ -13,3 +13,8 @@ class Lesson(Base):
     course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
 
     course = relationship("Course", back_populates="lessons")
+
+    # Nova relação bidirecional com a tabela de materiais (CASCADE garante limpeza automática)
+    materials = relationship(
+        "Material", back_populates="lesson", cascade="all, delete-orphan"
+    )

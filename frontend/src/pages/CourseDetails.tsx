@@ -5,9 +5,11 @@ import axios, { isAxiosError } from 'axios';
 import api from '../services/api';
 import { useAuthStore } from '../stores/auth';
 import { CreateLessonModal } from '../components/CreateLessonModal';
+import { CreateMaterialModal } from '../components/CreateMaterialModal';
 import type { Course } from '../schemas/course';
 import type { Lesson } from '../schemas/lesson';
 import type { Enrollment } from '../schemas/enrollment';
+import type { Material } from '../schemas/material';
 
 interface GuestInstructor {
   name: string;
@@ -16,6 +18,17 @@ interface GuestInstructor {
 
 type StatusFilter = 'all' | 'published' | 'draft';
 
+// Utilitário para renderizar o ícone correto baseado no tipo do material
+const getMaterialIcon = (type: string) => {
+  switch (type) {
+    case 'pdf': return '📄';
+    case 'video': return '🎞️';
+    case 'doc': return '📝';
+    case 'article': return '📰';
+    default: return '🔗';
+  }
+};
+
 export function CourseDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -23,8 +36,11 @@ export function CourseDetails() {
   
   const [course, setCourse] = useState<Course | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [materialsRecord, setMaterialsRecord] = useState<Record<number, Material[]>>({});
+  
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeLessonIdForMaterial, setActiveLessonIdForMaterial] = useState<number | null>(null);
   
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [instructor, setInstructor] = useState<GuestInstructor | null>(null);
@@ -38,7 +54,6 @@ export function CourseDetails() {
 
   const fetchData = useCallback(async () => {
     try {
-      // 1. Buscamos o Curso, as Aulas e as Matrículas em paralelo
       const [courseRes, lessonsRes, enrollmentsRes] = await Promise.all([
         api.get(`/courses/${id}`),
         api.get(`/courses/${id}/lessons`),
@@ -47,24 +62,38 @@ export function CourseDetails() {
 
       setCourse(courseRes.data);
       
-      // Filtro de Segurança Visual: Alunos nunca devem ver aulas em 'draft'
-      const fetchedLessons = lessonsRes.data;
-      setLessons(canManage ? fetchedLessons : fetchedLessons.filter((l: Lesson) => l.status === 'published'));
+      const fetchedLessons: Lesson[] = lessonsRes.data;
+      const visibleLessons = canManage ? fetchedLessons : fetchedLessons.filter(l => l.status === 'published');
+      setLessons(visibleLessons);
 
-      // 2. Verificamos se o utilizador está matriculado neste curso
+      // --- Overdelivering: Prevenção de N+1 e Busca Paralela de Materiais ---
+      if (visibleLessons.length > 0) {
+        const materialsPromises = visibleLessons.map(l => api.get(`/lessons/${l.id}/materials`));
+        const materialsResponses = await Promise.allSettled(materialsPromises);
+        
+        const newMaterialsRecord: Record<number, Material[]> = {};
+        visibleLessons.forEach((lesson, index) => {
+          const res = materialsResponses[index];
+          if (res.status === 'fulfilled') {
+            newMaterialsRecord[lesson.id] = res.value.data;
+          } else {
+            newMaterialsRecord[lesson.id] = [];
+          }
+        });
+        setMaterialsRecord(newMaterialsRecord);
+      }
+
       const currentEnrollment = enrollmentsRes.data.find((e: Enrollment) => e.course_id === Number(id));
       
       if (currentEnrollment) {
         setEnrollment(currentEnrollment);
-        
-        // 3. Se estiver matriculado, buscamos o progresso exato
         const progressRes = await api.get(`/enrollments/${currentEnrollment.id}/progress`);
         setCompletedLessons(progressRes.data.completed_lesson_ids);
         setCompletionPercentage(progressRes.data.completion_percentage);
       }
 
     } catch {
-      toast.error('Erro ao carregar detalhes do curso. Verifique se está matriculado.');
+      toast.error('Erro ao carregar detalhes do curso.');
       navigate('/dashboard');
     } finally {
       setIsLoading(false);
@@ -101,15 +130,22 @@ export function CourseDetails() {
     }
   };
 
-  // Motor de Conclusão de Aulas
+  const handleDeleteMaterial = async (materialId: number) => {
+    if (!window.confirm('Excluir este material de apoio?')) return;
+    try {
+      await api.delete(`/materials/${materialId}`);
+      toast.success('Material removido.');
+      fetchData();
+    } catch {
+      toast.error('Erro ao remover material.');
+    }
+  };
+
   const handleMarkAsComplete = async (lessonId: number) => {
     if (!enrollment) return;
-
     try {
       await api.post(`/enrollments/${enrollment.id}/progress`, { lesson_id: lessonId });
       toast.success('Aula concluída!', { icon: '🏆' });
-
-      // Re-busca o progresso para atualizar a barra e os checkboxes
       const progressRes = await api.get(`/enrollments/${enrollment.id}/progress`);
       setCompletedLessons(progressRes.data.completed_lesson_ids);
       setCompletionPercentage(progressRes.data.completion_percentage);
@@ -146,11 +182,7 @@ export function CourseDetails() {
 
           {instructor && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'var(--social-bg)', padding: '0.8rem 1.2rem', borderRadius: '50px', border: '1px solid var(--border)' }}>
-              <img 
-                src={instructor.picture} 
-                alt={`Foto do instrutor ${instructor.name}`} 
-                style={{ width: '40px', height: '40px', borderRadius: '50%' }}
-              />
+              <img src={instructor.picture} alt="Instrutor" style={{ width: '40px', height: '40px', borderRadius: '50%' }} />
               <div>
                 <div style={{ fontSize: '12px', color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Instrutor Convidado</div>
                 <div style={{ fontWeight: 'bold', fontSize: '14px' }}>Prof. {instructor.name}</div>
@@ -160,28 +192,18 @@ export function CourseDetails() {
         </div>
       </div>
 
-      {/* Barra de Progresso Exclusiva para Alunos Matriculados */}
       {enrollment && !canManage && (
         <div style={{ marginBottom: '2rem', background: 'var(--bg)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '8px', fontWeight: 'bold' }}>
             <span style={{ color: 'var(--text)' }}>Seu Progresso</span>
-            <span style={{ color: completionPercentage === 100 ? '#2e7d32' : 'var(--accent)' }}>
-              {completionPercentage}%
-            </span>
+            <span style={{ color: completionPercentage === 100 ? '#2e7d32' : 'var(--accent)' }}>{completionPercentage}%</span>
           </div>
           <div style={{ background: 'var(--social-bg)', height: '10px', borderRadius: '5px', overflow: 'hidden' }}>
             <div style={{ 
               background: completionPercentage === 100 ? '#2e7d32' : 'var(--accent)', 
-              height: '100%', 
-              width: `${completionPercentage}%`, 
-              transition: 'width 0.8s cubic-bezier(0.4, 0, 0.2, 1)' 
+              height: '100%', width: `${completionPercentage}%`, transition: 'width 0.8s cubic-bezier(0.4, 0, 0.2, 1)' 
             }}></div>
           </div>
-          {completionPercentage === 100 && (
-            <div style={{ marginTop: '8px', fontSize: '13px', color: '#2e7d32', textAlign: 'right' }}>
-              🎉 Parabéns! Você concluiu este curso.
-            </div>
-          )}
         </div>
       )}
 
@@ -190,17 +212,11 @@ export function CourseDetails() {
         <h3 style={{ margin: 0 }}>Conteúdo Programático ({filteredLessons.length})</h3>
         
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <select 
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className="counter"
-            style={{ margin: 0, padding: '0.5rem', background: 'var(--bg)', color: 'var(--text)', cursor: 'pointer' }}
-          >
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} className="counter" style={{ margin: 0, padding: '0.5rem', background: 'var(--bg)', color: 'var(--text)', cursor: 'pointer' }}>
             <option value="all">Todas as Aulas</option>
             <option value="published">Apenas Publicadas</option>
             {canManage && <option value="draft">Apenas Rascunhos</option>}
           </select>
-
           {canManage && (
             <button onClick={() => setIsModalOpen(true)} className="counter" style={{ background: 'var(--accent)', color: 'white', margin: 0 }}>
               + Adicionar Aula
@@ -209,7 +225,6 @@ export function CourseDetails() {
         </div>
       </div>
       
-      {/* Lista de Aulas */}
       {filteredLessons.length === 0 ? (
         <p style={{ color: 'var(--text)', fontStyle: 'italic', background: 'var(--code-bg)', padding: '2rem', borderRadius: '8px', textAlign: 'center' }}>
           Nenhuma aula encontrada para o filtro atual.
@@ -218,87 +233,82 @@ export function CourseDetails() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {filteredLessons.map((lesson, index) => {
             const isCompleted = completedLessons.includes(lesson.id);
+            const lessonMaterials = materialsRecord[lesson.id] || [];
 
             return (
-              <div 
-                key={lesson.id} 
-                style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center', 
-                  padding: '1rem', 
-                  background: 'var(--code-bg)', 
-                  borderRadius: '8px', 
-                  border: isCompleted ? '1px solid #2e7d32' : '1px solid var(--border)',
-                  opacity: lesson.status === 'draft' ? 0.7 : 1,
-                  flexWrap: 'wrap',
-                  gap: '1rem',
-                  transition: 'border 0.3s ease'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <span style={{ fontWeight: 'bold', color: 'var(--accent)', minWidth: '25px' }}>{index + 1}.</span>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 500 }}>{lesson.title}</span>
-                      {canManage && (
-                        <span style={{ 
-                          fontSize: '10px', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase',
-                          background: lesson.status === 'published' ? '#2e7d32' : '#757575', color: 'white'
-                        }}>
-                          {lesson.status === 'published' ? 'Publicada' : 'Rascunho'}
-                        </span>
+              <div key={lesson.id} style={{ 
+                padding: '1rem', background: 'var(--code-bg)', borderRadius: '8px', 
+                border: isCompleted ? '1px solid #2e7d32' : '1px solid var(--border)',
+                opacity: lesson.status === 'draft' ? 0.7 : 1, transition: 'border 0.3s ease'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+                  
+                  <div style={{ display: 'flex', gap: '1rem' }}>
+                    <span style={{ fontWeight: 'bold', color: 'var(--accent)', minWidth: '25px', paddingTop: '2px' }}>{index + 1}.</span>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '4px' }}>
+                        <span style={{ fontWeight: 500, fontSize: '16px' }}>{lesson.title}</span>
+                        {canManage && (
+                          <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase', background: lesson.status === 'published' ? '#2e7d32' : '#757575', color: 'white' }}>
+                            {lesson.status === 'published' ? 'Publicada' : 'Rascunho'}
+                          </span>
+                        )}
+                      </div>
+                      {lesson.video_url && (
+                        <a href={lesson.video_url} target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: 'var(--accent)', textDecoration: 'none', display: 'inline-block' }}>
+                          📺 Assistir Vídeo
+                        </a>
                       )}
                     </div>
-                    {lesson.video_url && (
-                      <a href={lesson.video_url} target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: 'var(--accent)', textDecoration: 'none', display: 'inline-block', marginTop: '4px' }}>
-                        📺 Assistir Vídeo
-                      </a>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', flexWrap: 'wrap' }}>
+                    {canManage && (
+                      <button onClick={() => setActiveLessonIdForMaterial(lesson.id)} style={{ background: 'var(--social-bg)', border: '1px solid var(--border)', color: 'var(--text)', cursor: 'pointer', padding: '0.4rem 0.8rem', borderRadius: '4px', fontSize: '12px' }}>
+                        + Anexar Material
+                      </button>
+                    )}
+                    {enrollment && !canManage && (
+                      <button onClick={() => handleMarkAsComplete(lesson.id)} disabled={isCompleted} style={{ background: isCompleted ? '#2e7d32' : 'transparent', color: isCompleted ? 'white' : 'var(--text)', border: isCompleted ? 'none' : '1px solid var(--border)', cursor: isCompleted ? 'default' : 'pointer', padding: '0.4rem 0.8rem', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', transition: 'all 0.3s ease' }}>
+                        {isCompleted ? '✓ Concluída' : 'Marcar como Concluída'}
+                      </button>
+                    )}
+                    {canManage && (
+                      <button onClick={() => handleDeleteLesson(lesson.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.1rem' }} title="Excluir aula">🗑️</button>
                     )}
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  {/* Botão de Conclusão para Alunos */}
-                  {enrollment && !canManage && (
-                    <button 
-                      onClick={() => handleMarkAsComplete(lesson.id)}
-                      disabled={isCompleted}
-                      style={{
-                        background: isCompleted ? '#2e7d32' : 'transparent',
-                        color: isCompleted ? 'white' : 'var(--text)',
-                        border: isCompleted ? 'none' : '1px solid var(--border)',
-                        cursor: isCompleted ? 'default' : 'pointer',
-                        padding: '0.4rem 0.8rem',
-                        borderRadius: '4px',
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                        transition: 'all 0.3s ease'
-                      }}
-                    >
-                      {isCompleted ? '✓ Concluída' : 'Marcar como Concluída'}
-                    </button>
-                  )}
-
-                  {/* Lixeira para Professores */}
-                  {canManage && (
-                    <button 
-                      onClick={() => handleDeleteLesson(lesson.id)}
-                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.1rem' }}
-                      title="Excluir aula"
-                    >
-                      🗑️
-                    </button>
-                  )}
-                </div>
+                {/* --- Sub-Lista Dinâmica de Materiais --- */}
+                {lessonMaterials.length > 0 && (
+                  <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed var(--border)' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '0.5rem', color: 'var(--text)' }}>Materiais de Apoio:</div>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {lessonMaterials.map(material => (
+                        <li key={material.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg)', padding: '0.5rem 0.8rem', borderRadius: '6px', fontSize: '13px' }}>
+                          <a href={material.url} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 500 }}>
+                            {getMaterialIcon(material.type)} {material.title}
+                          </a>
+                          {canManage && (
+                            <button onClick={() => handleDeleteMaterial(material.id)} style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: '0 0.5rem' }} title="Remover Material">✖</button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       )}
 
+      {/* Modais de Criação */}
       {isModalOpen && canManage && (
         <CreateLessonModal courseId={Number(id)} onClose={() => setIsModalOpen(false)} onSuccess={fetchData} />
+      )}
+      {activeLessonIdForMaterial !== null && canManage && (
+        <CreateMaterialModal lessonId={activeLessonIdForMaterial} onClose={() => setActiveLessonIdForMaterial(null)} onSuccess={fetchData} />
       )}
     </div>
   );
