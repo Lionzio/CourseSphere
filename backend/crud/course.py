@@ -1,6 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-
 from models.course import Course
 from schemas.course import CourseCreate, CourseUpdate
 
@@ -18,13 +17,10 @@ async def create_course(
 
 async def get_courses(db: AsyncSession, user_id: int, skip: int = 0, limit: int = 100):
     """
-    Garante o Isolamento de Dados: Um utilizador apenas visualiza os cursos
-    que lhe pertencem. Filtra estritamente pelo creator_id para impedir
-    vazamento de dados entre contas diferentes.
+    Retorna TODOS os cursos para popular o Catálogo Global da plataforma.
+    (O parâmetro user_id foi mantido na assinatura para não quebrar a rota em api/courses.py)
     """
-    result = await db.execute(
-        select(Course).where(Course.creator_id == user_id).offset(skip).limit(limit)
-    )
+    result = await db.execute(select(Course).offset(skip).limit(limit))
     return result.scalars().all()
 
 
@@ -41,7 +37,6 @@ async def update_course(
     update_data = course_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_course, key, value)
-
     await db.commit()
     await db.refresh(db_course)
     return db_course

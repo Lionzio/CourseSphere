@@ -6,7 +6,10 @@ from core.database import get_db
 from schemas.course import CourseCreate, CourseResponse, CourseUpdate
 from crud import course as crud_course
 from api.deps import get_current_user, get_current_teacher
-from models.user import User
+from models.user import User, Role
+
+# Nova importação: Precisamos verificar a matrícula!
+from crud.enrollment import get_enrollment
 
 router = APIRouter()
 
@@ -32,8 +35,7 @@ async def read_courses(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Lista os cursos. Garante o isolamento retornando APENAS os cursos do próprio utilizador."""
-    # Injetamos o ID do utilizador na query para isolamento absoluto
+    """Lista os cursos. Retorna TODOS os cursos para popular o Catálogo Global."""
     return await crud_course.get_courses(
         db=db, user_id=current_user.id, skip=skip, limit=limit
     )
@@ -45,16 +47,24 @@ async def read_course(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Busca os detalhes de um curso específico pertencente ao utilizador."""
+    """
+    Busca os detalhes de um curso específico.
+    Regra de Negócio: Exige matrícula ativa, ou privilégios de criador/admin.
+    """
     course = await crud_course.get_course_by_id(db=db, course_id=course_id)
     if not course:
         raise HTTPException(status_code=404, detail="Curso não encontrado.")
 
-    # Isolamento de Dados: Previne acesso direto a cursos de outras contas
-    if course.creator_id != current_user.id:
+    # 1. Se for o Admin ou o Criador do curso, acesso livre
+    if current_user.role == Role.admin or course.creator_id == current_user.id:
+        return course
+
+    # 2. Se for estudante, verifica estritamente se está matriculado
+    enrollment = await get_enrollment(db, user_id=current_user.id, course_id=course_id)
+    if not enrollment:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acesso negado. Este curso pertence a outra conta.",
+            detail="Acesso negado. Você precisa estar matriculado para aceder aos detalhes deste curso.",
         )
 
     return course
@@ -67,13 +77,13 @@ async def update_course(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),  # RBAC aplicado
 ):
-    """Atualiza um curso. Apenas o criador (se for professor/admin) pode editar."""
+    """Atualiza um curso. Apenas o criador (ou admin) pode editar."""
     course = await crud_course.get_course_by_id(db=db, course_id=course_id)
     if not course:
         raise HTTPException(status_code=404, detail="Curso não encontrado.")
 
-    # Regra de negócio: Apenas o criador edita
-    if course.creator_id != current_user.id:
+    # Regra de negócio: Apenas o criador ou Administradores editam
+    if course.creator_id != current_user.id and current_user.role != Role.admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acesso negado. Apenas o criador pode editar este curso.",
@@ -90,13 +100,13 @@ async def delete_course(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),  # RBAC aplicado
 ):
-    """Exclui um curso. Apenas o criador (se for professor/admin) pode deletar."""
+    """Exclui um curso. Apenas o criador (ou admin) pode deletar."""
     course = await crud_course.get_course_by_id(db=db, course_id=course_id)
     if not course:
         raise HTTPException(status_code=404, detail="Curso não encontrado.")
 
-    # Regra de negócio: Apenas o criador deleta
-    if course.creator_id != current_user.id:
+    # Regra de negócio: Apenas o criador ou Administradores deletam
+    if course.creator_id != current_user.id and current_user.role != Role.admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acesso negado. Apenas o criador pode excluir este curso.",

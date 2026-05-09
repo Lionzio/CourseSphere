@@ -1,11 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-# Importação da base de dados para a criação automática das tabelas
 from core.database import engine, Base
-
-# Registro explícito dos modelos no SQLAlchemy (Garante a criação via Base.metadata)
 from models.audit_log import AuditLog  # noqa: F401
 
 # Importação dos roteadores
@@ -13,6 +9,8 @@ from api.auth import router as auth_router
 from api.courses import router as courses_router
 from api.lessons import router as lessons_router
 from api.admin import router as admin_router
+
+from api.enrollments import router as enrollments_router
 
 
 @asynccontextmanager
@@ -66,6 +64,11 @@ app.include_router(
 )
 app.include_router(courses_router, prefix="/api/v1/courses", tags=["Gestão de Cursos"])
 app.include_router(lessons_router, prefix="/api/v1", tags=["Gestão de Aulas (Lessons)"])
+app.include_router(
+    enrollments_router,
+    prefix="/api/v1/enrollments",
+    tags=["Matrículas & Progresso"],
+)
 
 
 @app.get("/", tags=["Healthcheck"])
