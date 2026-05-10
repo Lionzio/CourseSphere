@@ -13,8 +13,10 @@ from crud import lesson as crud_lesson
 from crud import quiz as crud_quiz
 from models.lesson import Lesson
 from models.user import Role, User
+from schemas.ai_quiz import AIQuizSchema
 from schemas.attempt import QuizAttemptCreate, QuizAttemptResponse, QuizGradeUpdate
 from schemas.quiz import QuizCreate, QuizResponse
+from services.ai_service import generate_quiz_from_content
 
 router = APIRouter()
 
@@ -170,6 +172,67 @@ async def delete_quiz_from_lesson(
         )
 
     await crud_quiz.delete_quiz(db, quiz)
+
+
+# ==========================================
+# ROTA DE IA — Geração Automática de Quiz (SPRINT 7)
+# ==========================================
+
+
+@router.post(
+    "/lessons/{lesson_id}/quizzes/ai-generate",
+    response_model=AIQuizSchema,
+    status_code=status.HTTP_200_OK,
+    summary="Gerar quiz automaticamente com IA",
+)
+async def ai_generate_quiz(
+    lesson_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+) -> AIQuizSchema:
+    """
+    Lê o conteúdo da aula e gera autonomamente um questionário completo via IA.
+
+    Utiliza Gemini Structured Outputs como primário e Groq como fallback.
+    O JSON retornado é validado pelo Pydantic antes de ser enviado ao frontend,
+    garantindo que o contrato de dados seja sempre respeitado.
+
+    Apenas o professor criador do curso ou admin pode aceder.
+    Retorna 400 se a aula não tiver conteúdo suficiente para gerar questões.
+    Retorna 503 se todos os nós de IA estiverem indisponíveis.
+    """
+    await verify_quiz_access(lesson_id, current_user, db, require_ownership=True)
+
+    lesson = await crud_lesson.get_lesson_by_id(db, lesson_id)
+    if not lesson:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Aula não encontrada.",
+        )
+
+    # Garante que existe conteúdo suficiente para gerar questões
+    content = getattr(lesson, "content", None) or getattr(lesson, "ai_summary", None)
+    if not content or len(content.strip()) < 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "A aula não possui conteúdo suficiente para gerar questões. "
+                "Adicione o conteúdo/transcrição da aula antes de usar o AI Quiz Builder."
+            ),
+        )
+
+    try:
+        generated_quiz = await generate_quiz_from_content(
+            lesson_title=lesson.title,
+            content=content,
+        )
+        return generated_quiz
+
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        )
 
 
 # ==========================================
