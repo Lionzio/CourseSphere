@@ -16,6 +16,8 @@ pyjwt = "*"
 python-multipart = "*"
 email-validator = "*"
 bcrypt = "==4.0.1"
+groq = "*"
+google-genai = "*"
 
 [dev-packages]
 black = "*"

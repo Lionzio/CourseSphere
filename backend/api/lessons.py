@@ -9,10 +9,13 @@ from crud import course as crud_course
 from api.deps import get_current_user
 from models.user import User
 
+# Importação do serviço de Inteligência Artificial
+from services.ai_service import generate_lesson_summary
+
 router = APIRouter()
 
 
-# Função auxiliar para garantir o princípio DRY (Don't Repeat Yourself)
+# Função auxiliar para garantir o princípio DRY
 async def verify_course_ownership(course_id: int, user_id: int, db: AsyncSession):
     course = await crud_course.get_course_by_id(db, course_id)
     if not course:
@@ -36,7 +39,6 @@ async def create_lesson(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Cria uma nova aula vinculada a um curso específico."""
     await verify_course_ownership(course_id, current_user.id, db)
     return await crud_lesson.create_lesson(db=db, lesson=lesson, course_id=course_id)
 
@@ -49,8 +51,6 @@ async def read_lessons(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Lista as aulas de um curso (apenas para usuários logados)."""
-    # Apenas certifica que o curso existe
     course = await crud_course.get_course_by_id(db, course_id)
     if not course:
         raise HTTPException(status_code=404, detail="Curso não encontrado.")
@@ -66,7 +66,6 @@ async def update_lesson(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Atualiza uma aula (apenas o criador do curso tem permissão)."""
     lesson = await crud_lesson.get_lesson_by_id(db, lesson_id)
     if not lesson:
         raise HTTPException(status_code=404, detail="Aula não encontrada.")
@@ -82,9 +81,55 @@ async def delete_lesson(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Exclui uma aula (apenas o criador do curso tem permissão)."""
     lesson = await crud_lesson.get_lesson_by_id(db, lesson_id)
     if not lesson:
         raise HTTPException(status_code=404, detail="Aula não encontrada.")
     await verify_course_ownership(lesson.course_id, current_user.id, db)
     await crud_lesson.delete_lesson(db=db, db_lesson=lesson)
+
+
+# ==========================================
+# MOTOR DE INTELIGÊNCIA ARTIFICIAL (SPRINT 6)
+# ==========================================
+@router.post("/lessons/{lesson_id}/ai-summary", response_model=LessonResponse)
+async def generate_smart_summary(
+    lesson_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Gera e salva em cache um Smart Summary em Markdown usando o LLM Router."""
+    lesson = await crud_lesson.get_lesson_by_id(db, lesson_id)
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Aula não encontrada.")
+
+    # Overdelivering de Segurança: Apenas administradores ou o dono do curso podem gastar tokens da API
+    await verify_course_ownership(lesson.course_id, current_user.id, db)
+
+    # Sistema de Cache: Se já existe, devolvemos sem bater na API novamente
+    if lesson.ai_summary:
+        return lesson
+
+    # Prevenção contra falhas: Se a aula não tiver conteúdo, usamos um prompt instrucional de segurança
+    # String quebrada em múltiplas linhas para respeitar o limite de caracteres do flake8 (PEP8)
+    content_to_use = (
+        lesson.content
+        if lesson.content and len(lesson.content.strip()) > 10
+        else (
+            f"Aula introdutória e explicativa sobre o tema: {lesson.title}. "
+            "Aborde conceitos fundamentais, teorias e exemplos práticos para os alunos."
+        )
+    )
+
+    try:
+        # Aciona a Chain of Responsibility (Gemini 2.5 -> Fallback Groq)
+        summary_markdown = await generate_lesson_summary(lesson.title, content_to_use)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+    # Atualiza a aula com o resumo salvo no banco de dados
+    lesson_update = LessonUpdate(ai_summary=summary_markdown)
+    updated_lesson = await crud_lesson.update_lesson(
+        db, db_lesson=lesson, lesson_update=lesson_update
+    )
+
+    return updated_lesson
