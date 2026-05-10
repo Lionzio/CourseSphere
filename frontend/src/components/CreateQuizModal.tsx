@@ -286,10 +286,21 @@ export function CreateQuizModal({
     replace: replaceQuestions,
   } = useFieldArray({ control, name: 'questions' });
 
-  // ── Submissão manual ──────────────────────────────────────────────────────
+  // ── Submissão manual e Limpeza Pydantic ──────────────────────────────────
   const onSubmit = async (data: QuizFormValues) => {
     try {
-      await api.post(`/lessons/${lessonId}/quizzes`, data);
+      // BUGFIX: Limpa ativamente opções de questões abertas para evitar erros Pydantic de min_length
+      const sanitizedData: QuizFormValues = {
+        ...data,
+        questions: data.questions.map((q) => {
+          if (q.question_type === 'open') {
+            return { ...q, options: [] };
+          }
+          return q;
+        }),
+      };
+
+      await api.post(`/lessons/${lessonId}/quizzes`, sanitizedData);
       toast.success('Avaliação criada com sucesso!', { icon: '📝' });
       onSuccess();
       onClose();
@@ -311,11 +322,8 @@ export function CreateQuizModal({
       );
       const generated = res.data;
 
-      // Preenche o título sugerido pela IA no campo do formulário
       setValue('title', generated.title, { shouldValidate: true });
 
-      // Substitui todas as questões existentes pelas geradas pela IA.
-      // O professor pode editar, remover ou adicionar questões antes de publicar.
       replaceQuestions(
         generated.questions.map((q) => ({
           text: q.text,
@@ -432,7 +440,7 @@ export function CreateQuizModal({
           </button>
         </div>
 
-        {/* ── BANNER DO AI QUIZ BUILDER (fora do <form> — nunca dispara submit) ── */}
+        {/* ── BANNER DO AI QUIZ BUILDER ── */}
         <div
           style={{
             marginBottom: '1.5rem',
@@ -503,7 +511,7 @@ export function CreateQuizModal({
           </button>
         </div>
 
-        {/* ── FORMULÁRIO com scroll interno ── */}
+        {/* ── FORMULÁRIO ── */}
         <form
           onSubmit={handleSubmit(onSubmit)}
           style={{
@@ -635,7 +643,7 @@ export function CreateQuizModal({
             )}
           </div>
 
-          {/* Footer sticky com botões de ação */}
+          {/* Footer sticky */}
           <div
             style={{
               display: 'flex',
@@ -683,7 +691,7 @@ export function CreateQuizModal({
         </form>
       </div>
 
-      {/* Keyframe global da animação de loading da IA */}
+      {/* Keyframe global */}
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }

@@ -2,6 +2,7 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_current_teacher, get_current_user
@@ -17,6 +18,7 @@ from schemas.ai_quiz import AIQuizSchema
 from schemas.attempt import QuizAttemptCreate, QuizAttemptResponse, QuizGradeUpdate
 from schemas.quiz import QuizCreate, QuizResponse
 from services.ai_service import generate_quiz_from_content
+from services.pdf_service import generate_quiz_report_pdf
 
 router = APIRouter()
 
@@ -32,23 +34,7 @@ async def verify_quiz_access(
     db: AsyncSession,
     require_ownership: bool = False,
 ) -> Lesson:
-    """
-    Motor central de autorização para todas as rotas de avaliação.
-
-    Args:
-        lesson_id: ID da aula à qual o quiz pertence.
-        user: Utilizador autenticado via JWT.
-        db: Sessão assíncrona do banco de dados.
-        require_ownership: Se True, exige que o utilizador seja o criador
-                           do curso ou admin. Se False, valida matrícula ativa.
-
-    Returns:
-        O objeto Lesson validado.
-
-    Raises:
-        HTTPException 404: Aula não encontrada.
-        HTTPException 403: Permissões insuficientes.
-    """
+    """Motor central de autorização para todas as rotas de avaliação."""
     lesson = await crud_lesson.get_lesson_by_id(db, lesson_id)
     if not lesson:
         raise HTTPException(
@@ -65,14 +51,15 @@ async def verify_quiz_access(
 
     is_manager = user.role == Role.admin or course.creator_id == user.id
 
-    # Rota de gestão: exige ser o professor criador ou admin
     if require_ownership and not is_manager:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acesso negado. Apenas o professor do curso pode gerir esta avaliação.",
+            detail=(
+                "Acesso negado. Apenas o professor do curso "
+                "pode gerir esta avaliação."
+            ),
         )
 
-    # Rota de consumo: managers passam diretamente; alunos precisam de matrícula
     if not require_ownership and not is_manager:
         enrollment = await crud_enrollment.get_enrollment(
             db, user_id=user.id, course_id=course.id
@@ -80,7 +67,10 @@ async def verify_quiz_access(
         if not enrollment:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Acesso negado. Matricule-se no curso para interagir com esta avaliação.",
+                detail=(
+                    "Acesso negado. Matricule-se no curso para "
+                    "interagir com as avaliações."
+                ),
             )
 
     return lesson
@@ -103,79 +93,78 @@ async def create_quiz_for_lesson(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ) -> QuizResponse:
-    """
-    Cria um questionário completo (com questões e opções) para uma aula.
-    Apenas o professor criador do curso ou um admin pode usar este endpoint.
-    Retorna 409 se a aula já possuir uma avaliação ativa.
-    """
+    """Cria um questionário completo (1:N)."""
     await verify_quiz_access(lesson_id, current_user, db, require_ownership=True)
-
-    existing_quiz = await crud_quiz.get_quiz_by_lesson(db, lesson_id)
-    if existing_quiz:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Esta aula já possui uma avaliação ativa. Exclua-a primeiro para criar uma nova.",
-        )
-
     return await crud_quiz.create_quiz(db=db, quiz_in=quiz, lesson_id=lesson_id)
 
 
 @router.get(
     "/lessons/{lesson_id}/quizzes",
-    response_model=QuizResponse,
-    summary="Buscar avaliação de uma aula",
+    response_model=List[QuizResponse],
+    summary="Listar todas as avaliações de uma aula",
 )
-async def get_quiz_for_lesson(
+async def get_quizzes_for_lesson(
     lesson_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> List[QuizResponse]:
+    """Retorna a lista de todas as avaliações disponíveis para esta aula."""
+    await verify_quiz_access(lesson_id, current_user, db, require_ownership=False)
+    return await crud_quiz.get_quizzes_by_lesson(db, lesson_id)
+
+
+@router.get(
+    "/lessons/{lesson_id}/quizzes/{quiz_id}",
+    response_model=QuizResponse,
+    summary="Buscar uma avaliação específica",
+)
+async def get_quiz_by_id_endpoint(
+    lesson_id: int,
+    quiz_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> QuizResponse:
     """
-    Retorna a avaliação de uma aula.
-    - Professores/Admins veem o gabarito completo.
-    - Estudantes matriculados recebem as questões sem indicação da resposta correta
-      (filtragem feita na camada de schema/crud).
+    BUGFIX: Retorna os dados de uma avaliação específica.
+    Necessário para os alunos conseguirem renderizar a prova no frontend.
     """
     await verify_quiz_access(lesson_id, current_user, db, require_ownership=False)
 
-    quiz = await crud_quiz.get_quiz_by_lesson(db, lesson_id)
-    if not quiz:
+    quiz = await crud_quiz.get_quiz_by_id(db, quiz_id)
+    if not quiz or quiz.lesson_id != lesson_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Nenhuma avaliação encontrada para esta aula.",
+            detail="Avaliação não encontrada ou não pertence a esta aula.",
         )
-
     return quiz
 
 
 @router.delete(
-    "/lessons/{lesson_id}/quizzes",
+    "/lessons/{lesson_id}/quizzes/{quiz_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Excluir avaliação de uma aula",
+    summary="Excluir avaliação específica",
 )
 async def delete_quiz_from_lesson(
     lesson_id: int,
+    quiz_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ) -> None:
-    """
-    Remove a avaliação de uma aula em cascata (Quiz → Questões → Opções → Tentativas).
-    Ação irreversível. Apenas o professor criador ou admin pode executá-la.
-    """
+    """Remove uma avaliação específica pelo seu ID (Cascata habilitada)."""
     await verify_quiz_access(lesson_id, current_user, db, require_ownership=True)
 
-    quiz = await crud_quiz.get_quiz_by_lesson(db, lesson_id)
-    if not quiz:
+    quiz = await crud_quiz.get_quiz_by_id(db, quiz_id)
+    if not quiz or quiz.lesson_id != lesson_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Nenhuma avaliação encontrada para excluir.",
+            detail="Avaliação não encontrada ou não pertence a esta aula.",
         )
 
     await crud_quiz.delete_quiz(db, quiz)
 
 
 # ==========================================
-# ROTA DE IA — Geração Automática de Quiz (SPRINT 7)
+# ROTA DE IA — Geração Automática
 # ==========================================
 
 
@@ -190,49 +179,28 @@ async def ai_generate_quiz(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ) -> AIQuizSchema:
-    """
-    Lê o conteúdo da aula e gera autonomamente um questionário completo via IA.
-
-    Utiliza Gemini Structured Outputs como primário e Groq como fallback.
-    O JSON retornado é validado pelo Pydantic antes de ser enviado ao frontend,
-    garantindo que o contrato de dados seja sempre respeitado.
-
-    Apenas o professor criador do curso ou admin pode aceder.
-    Retorna 400 se a aula não tiver conteúdo suficiente para gerar questões.
-    Retorna 503 se todos os nós de IA estiverem indisponíveis.
-    """
+    """Lê o conteúdo da aula e gera autonomamente um questionário via IA."""
     await verify_quiz_access(lesson_id, current_user, db, require_ownership=True)
-
     lesson = await crud_lesson.get_lesson_by_id(db, lesson_id)
-    if not lesson:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Aula não encontrada.",
-        )
 
-    # Garante que existe conteúdo suficiente para gerar questões
     content = getattr(lesson, "content", None) or getattr(lesson, "ai_summary", None)
     if not content or len(content.strip()) < 100:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "A aula não possui conteúdo suficiente para gerar questões. "
-                "Adicione o conteúdo/transcrição da aula antes de usar o AI Quiz Builder."
+                "Adicione o conteúdo/transcrição da aula antes de usar "
+                "o AI Quiz Builder."
             ),
         )
 
     try:
-        generated_quiz = await generate_quiz_from_content(
+        return await generate_quiz_from_content(
             lesson_title=lesson.title,
             content=content,
         )
-        return generated_quiz
-
     except RuntimeError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(e),
-        )
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 # ==========================================
@@ -241,29 +209,19 @@ async def ai_generate_quiz(
 
 
 @router.get(
-    "/lessons/{lesson_id}/quizzes/attempts",
+    "/lessons/{lesson_id}/quizzes/{quiz_id}/attempts",
     response_model=List[QuizAttemptResponse],
-    summary="Listar tentativas dos alunos (Painel de Correção)",
+    summary="Listar tentativas de um quiz específico",
 )
 async def list_quiz_attempts(
     lesson_id: int,
+    quiz_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ) -> List[QuizAttemptResponse]:
-    """
-    Lista todas as tentativas submetidas pelos alunos para uma avaliação.
-    Exclusivo para o professor do curso e admins.
-    """
+    """Lista as submissões dos alunos para o painel de correção do professor."""
     await verify_quiz_access(lesson_id, current_user, db, require_ownership=True)
-
-    quiz = await crud_quiz.get_quiz_by_lesson(db, lesson_id)
-    if not quiz:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Avaliação não encontrada.",
-        )
-
-    return await crud_attempt.get_all_attempts_for_quiz(db, quiz.id)
+    return await crud_attempt.get_all_attempts_for_quiz(db, quiz_id)
 
 
 @router.patch(
@@ -278,12 +236,8 @@ async def grade_student_attempt(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ) -> QuizAttemptResponse:
-    """
-    Atribui notas e feedback às questões abertas de uma tentativa específica.
-    Apenas o professor do curso ou admin pode corrigir.
-    """
+    """Atribui notas e feedback às questões abertas de uma tentativa."""
     await verify_quiz_access(lesson_id, current_user, db, require_ownership=True)
-
     try:
         return await crud_attempt.grade_attempt_manually(db, attempt_id, grading_in)
     except ValueError as e:
@@ -291,79 +245,59 @@ async def grade_student_attempt(
 
 
 # ==========================================
-# ROTAS DO ALUNO — Execução e Visualização
+# ROTAS DO ALUNO E PDF — Execução e Exportação
 # ==========================================
 
 
 @router.post(
-    "/lessons/{lesson_id}/quizzes/attempts",
+    "/lessons/{lesson_id}/quizzes/{quiz_id}/attempts",
     response_model=QuizAttemptResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Submeter respostas para auto-correção",
+    summary="Submeter respostas para um quiz específico",
 )
 async def submit_quiz_attempt(
     lesson_id: int,
+    quiz_id: int,
     attempt: QuizAttemptCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> QuizAttemptResponse:
-    """
-    Submete as respostas de um aluno para auto-correção imediata.
-    Regras de negócio aplicadas:
-    - Aluno precisa estar matriculado no curso.
-    - Apenas uma tentativa por avaliação é permitida (anti-cheat).
-    """
+    """Submete as respostas de um aluno para auto-correção imediata."""
     await verify_quiz_access(lesson_id, current_user, db, require_ownership=False)
 
-    quiz = await crud_quiz.get_quiz_by_lesson(db, lesson_id)
-    if not quiz:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Avaliação não encontrada.",
-        )
-
     existing_attempt = await crud_attempt.get_user_attempt(
-        db, user_id=current_user.id, quiz_id=quiz.id
+        db, user_id=current_user.id, quiz_id=quiz_id
     )
     if existing_attempt:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Você já realizou esta avaliação. Apenas uma tentativa é permitida.",
+            detail="Você já realizou esta avaliação específica.",
         )
 
     try:
         return await crud_attempt.create_and_grade_attempt(
-            db=db, attempt_in=attempt, quiz_id=quiz.id, user_id=current_user.id
+            db=db, attempt_in=attempt, quiz_id=quiz_id, user_id=current_user.id
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.get(
-    "/lessons/{lesson_id}/quizzes/attempts/my",
+    "/lessons/{lesson_id}/quizzes/{quiz_id}/attempts/my",
     response_model=QuizAttemptResponse,
-    summary="Consultar meu boletim de notas",
+    summary="Consultar meu boletim de notas de um quiz",
 )
 async def get_my_quiz_attempt(
     lesson_id: int,
+    quiz_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> QuizAttemptResponse:
-    """
-    Retorna o boletim de notas da tentativa já realizada pelo aluno autenticado.
-    Retorna 404 se o aluno ainda não submeteu respostas para esta avaliação.
-    """
+    """Retorna o boletim de notas da tentativa já realizada pelo aluno."""
     await verify_quiz_access(lesson_id, current_user, db, require_ownership=False)
 
-    quiz = await crud_quiz.get_quiz_by_lesson(db, lesson_id)
-    if not quiz:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Avaliação não encontrada.",
-        )
-
     attempt = await crud_attempt.get_user_attempt(
-        db, user_id=current_user.id, quiz_id=quiz.id
+        db, user_id=current_user.id, quiz_id=quiz_id
     )
     if not attempt:
         raise HTTPException(
@@ -372,3 +306,67 @@ async def get_my_quiz_attempt(
         )
 
     return attempt
+
+
+@router.get(
+    "/lessons/{lesson_id}/quizzes/{quiz_id}/attempts/{attempt_id}/pdf",
+    response_class=StreamingResponse,
+    summary="Download do Boletim de Avaliação em PDF",
+)
+async def download_quiz_attempt_pdf(
+    lesson_id: int,
+    quiz_id: int,
+    attempt_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Gera dinamicamente o arquivo PDF contendo o boletim e gabarito da avaliação.
+    Retorna via StreamingResponse para o navegador do cliente.
+    """
+    lesson = await verify_quiz_access(
+        lesson_id, current_user, db, require_ownership=False
+    )
+
+    quiz = await crud_quiz.get_quiz_by_id(db, quiz_id)
+    if not quiz or quiz.lesson_id != lesson_id:
+        raise HTTPException(status_code=404, detail="Avaliação não encontrada.")
+
+    attempt = await crud_attempt.get_attempt_by_id(db, attempt_id)
+    if not attempt or attempt.quiz_id != quiz_id:
+        raise HTTPException(status_code=404, detail="Tentativa não encontrada.")
+
+    course = await crud_course.get_course_by_id(db, lesson.course_id)
+    is_manager = current_user.role == Role.admin or course.creator_id == current_user.id
+    if not is_manager and attempt.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acesso negado. Apenas pode baixar o seu próprio boletim.",
+        )
+
+    answers_details = [
+        {
+            "question_id": ans.question_id,
+            "is_correct": ans.is_correct,
+            "manual_score": ans.manual_score,
+            "teacher_feedback": ans.teacher_feedback,
+        }
+        for ans in attempt.answers
+    ]
+    score = attempt.score if attempt.score is not None else 0.0
+
+    pdf_bytes = generate_quiz_report_pdf(
+        quiz_title=quiz.title,
+        score=score,
+        student_id=attempt.user_id,
+        answers_details=answers_details,
+    )
+
+    filename = f"Boletim_{quiz.id}_Aluno_{attempt.user_id}.pdf"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+
+    return StreamingResponse(
+        pdf_bytes,
+        media_type="application/pdf",
+        headers=headers,
+    )

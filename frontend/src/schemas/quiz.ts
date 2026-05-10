@@ -6,7 +6,8 @@ import { z } from 'zod';
 // ==========================================
 
 const optionSchema = z.object({
-  text: z.string().min(1, 'O texto da alternativa não pode estar vazio'),
+  // O min() foi removido daqui para ser validado condicionalmente no superRefine
+  text: z.string(),
   is_correct: z.boolean(),
 });
 
@@ -15,6 +16,36 @@ const questionSchema = z.object({
   question_type: z.enum(['multiple_choice', 'open']),
   weight: z.number().min(0.1, 'O peso mínimo é 0.1').max(100, 'O peso máximo é 100'),
   options: z.array(optionSchema),
+}).superRefine((data, ctx) => {
+  // BUGFIX SPRINT 8: Validação Condicional. Só cobra regras de alternativas se for múltipla escolha.
+  if (data.question_type === 'multiple_choice') {
+    if (data.options.length < 2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Questões de múltipla escolha exigem pelo menos 2 alternativas.',
+        path: ['options'],
+      });
+    }
+    
+    const hasCorrect = data.options.some((opt) => opt.is_correct);
+    if (!hasCorrect) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Selecione pelo menos uma alternativa correta.',
+        path: ['options'],
+      });
+    }
+
+    data.options.forEach((opt, index) => {
+      if (opt.text.trim().length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'O texto da alternativa não pode estar vazio.',
+          path: ['options', index, 'text'],
+        });
+      }
+    });
+  }
 });
 
 export const quizSchema = z.object({

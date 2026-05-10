@@ -1,3 +1,4 @@
+from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
@@ -38,29 +39,40 @@ async def create_quiz(db: AsyncSession, quiz_in: QuizCreate, lesson_id: int) -> 
     # Faz o commit de toda a árvore de uma só vez
     await db.commit()
 
-    # Retorna o quiz recém-criado usando a nossa função de busca otimizada
-    return await get_quiz_by_lesson(db, lesson_id)
+    # Retorna o quiz recém-criado usando a busca por ID
+    return await get_quiz_by_id(db, db_quiz.id)
 
 
-async def get_quiz_by_lesson(db: AsyncSession, lesson_id: int) -> Quiz | None:
+async def get_quiz_by_id(db: AsyncSession, quiz_id: int) -> Quiz | None:
     """
-    Busca o Quiz de uma aula específica.
-    Utiliza `joinedload` para carregar a árvore inteira (Quiz -> Questions -> Options)
-    numa única query SQL, evitando vazamento de memória e N+1 queries.
+    Busca um Quiz específico pelo seu ID.
+    Carrega a árvore inteira (Quiz -> Questions -> Options).
+    """
+    result = await db.execute(
+        select(Quiz)
+        .options(joinedload(Quiz.questions).joinedload(Question.options))
+        .where(Quiz.id == quiz_id)
+    )
+    return result.unique().scalars().first()
+
+
+async def get_quizzes_by_lesson(db: AsyncSession, lesson_id: int) -> List[Quiz]:
+    """
+    REFACTOR SPRINT 8: Retorna todos os Quizzes de uma aula (Relação 1:N).
+    Utiliza `joinedload` para evitar N+1 queries.
     """
     result = await db.execute(
         select(Quiz)
         .options(joinedload(Quiz.questions).joinedload(Question.options))
         .where(Quiz.lesson_id == lesson_id)
     )
-    # .unique() é obrigatório quando usamos joinedload com relacionamentos 1:N no SQLAlchemy
-    return result.unique().scalars().first()
+    return list(result.unique().scalars().all())
 
 
 async def delete_quiz(db: AsyncSession, db_quiz: Quiz):
     """
-    Apaga o quiz. Graças ao cascade="all, delete-orphan" definido nos modelos,
-    todas as questões e opções associadas serão apagadas automaticamente pelo banco.
+    Apaga o quiz. Graças ao cascade="all, delete-orphan",
+    as questões e opções associadas serão apagadas automaticamente.
     """
     await db.delete(db_quiz)
     await db.commit()

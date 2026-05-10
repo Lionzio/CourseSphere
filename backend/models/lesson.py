@@ -26,7 +26,8 @@ class Lesson(Base):
         "Material", back_populates="lesson", cascade="all, delete-orphan"
     )
 
-    # Relação 1-para-1 com o Motor de Avaliações
-    quiz = relationship(
-        "Quiz", back_populates="lesson", uselist=False, cascade="all, delete-orphan"
+    # REFACTOR SPRINT 8: Relação 1:N (Uma aula agora pode ter múltiplos Quizzes)
+    # Removido o uselist=False e renomeado de 'quiz' para 'quizzes'
+    quizzes = relationship(
+        "Quiz", back_populates="lesson", cascade="all, delete-orphan"
     )

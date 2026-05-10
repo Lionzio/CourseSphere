@@ -4,7 +4,7 @@ from core.database import Base
 
 
 class Quiz(Base):
-    """Modelo principal da avaliação. Teremos a regra de 1 Quiz por Aula."""
+    """Modelo principal da avaliação. Modificado na Sprint 8 para 1:N (múltiplas provas por aula)."""
 
     __tablename__ = "quizzes"
 
@@ -14,15 +14,15 @@ class Quiz(Base):
     # Peso da prova inteira para o cálculo da Nota Final da Disciplina (NFD)
     weight = Column(Float, default=1.0, server_default="1.0", nullable=False)
 
-    # unique=True garante a regra de negócio: 1 Aula = Máximo de 1 Quiz
+    # REFACTOR SPRINT 8: unique=True removido para permitir Múltiplos Quizzes por Aula
     lesson_id = Column(
         Integer,
         ForeignKey("lessons.id", ondelete="CASCADE"),
-        unique=True,
         nullable=False,
     )
 
-    lesson = relationship("Lesson", back_populates="quiz")
+    # Atualizado para back_populates="quizzes" (no plural) para casar com o modelo Lesson
+    lesson = relationship("Lesson", back_populates="quizzes")
 
     # cascade="all, delete-orphan" garante que ao apagar o quiz, as questões somem
     questions = relationship(

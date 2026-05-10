@@ -13,6 +13,7 @@ import type {
 
 interface GradeQuizModalProps {
   lessonId: number;
+  quizId: number; // SPRINT 8: Nova prop para suportar a arquitetura 1:N
   onClose: () => void;
 }
 
@@ -257,7 +258,7 @@ function AttemptCard({
 // COMPONENTE PRINCIPAL
 // ==========================================
 
-export function GradeQuizModal({ lessonId, onClose }: GradeQuizModalProps) {
+export function GradeQuizModal({ lessonId, quizId, onClose }: GradeQuizModalProps) {
   const [quiz, setQuiz] = useState<QuizResponse | null>(null);
   const [attempts, setAttempts] = useState<QuizAttemptResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -268,11 +269,21 @@ export function GradeQuizModal({ lessonId, onClose }: GradeQuizModalProps) {
 
   const fetchData = useCallback(async () => {
     try {
-      const [quizRes, attemptsRes] = await Promise.all([
+      // SPRINT 8: Busca a lista de quizzes e encontra o quiz específico e as suas tentativas
+      const [quizListRes, attemptsRes] = await Promise.all([
         api.get(`/lessons/${lessonId}/quizzes`),
-        api.get(`/lessons/${lessonId}/quizzes/attempts`),
+        api.get(`/lessons/${lessonId}/quizzes/${quizId}/attempts`),
       ]);
-      const fetchedQuiz: QuizResponse = quizRes.data;
+      
+      const fetchedQuizList: QuizResponse[] = quizListRes.data;
+      const fetchedQuiz = fetchedQuizList.find(q => q.id === quizId);
+      
+      if (!fetchedQuiz) {
+        toast.error('Avaliação não encontrada.');
+        onClose();
+        return;
+      }
+
       const fetchedAttempts: QuizAttemptResponse[] = attemptsRes.data;
 
       setQuiz(fetchedQuiz);
@@ -303,7 +314,7 @@ export function GradeQuizModal({ lessonId, onClose }: GradeQuizModalProps) {
 
     } catch (error) {
       if (isAxiosError(error) && error.response?.status === 404) {
-        toast.error('Esta aula não possui uma avaliação publicada.');
+        toast.error('Esta avaliação não foi encontrada.');
       } else {
         toast.error('Erro ao carregar tentativas.');
       }
@@ -311,7 +322,7 @@ export function GradeQuizModal({ lessonId, onClose }: GradeQuizModalProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [lessonId, onClose]);
+  }, [lessonId, quizId, onClose]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect

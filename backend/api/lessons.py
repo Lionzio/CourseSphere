@@ -1,21 +1,24 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from schemas.lesson import LessonCreate, LessonResponse, LessonUpdate
 from crud import lesson as crud_lesson
 from crud import course as crud_course
+from crud import enrollment as crud_enrollment
 from api.deps import get_current_user
-from models.user import User
+from models.user import User, Role
 
-# Importação do serviço de Inteligência Artificial
+# Importações de Serviços (IA e PDF)
 from services.ai_service import generate_lesson_summary
+from services.pdf_service import generate_lesson_summary_pdf
 
 router = APIRouter()
 
 
-# Função auxiliar para garantir o princípio DRY
+# Função auxiliar para garantir o princípio DRY nas rotas de gestão
 async def verify_course_ownership(course_id: int, user_id: int, db: AsyncSession):
     course = await crud_course.get_course_by_id(db, course_id)
     if not course:
@@ -102,26 +105,25 @@ async def generate_smart_summary(
     if not lesson:
         raise HTTPException(status_code=404, detail="Aula não encontrada.")
 
-    # Overdelivering de Segurança: Apenas administradores ou o dono do curso podem gastar tokens da API
+    # Apenas administradores ou o dono do curso podem gastar tokens da API
     await verify_course_ownership(lesson.course_id, current_user.id, db)
 
     # Sistema de Cache: Se já existe, devolvemos sem bater na API novamente
     if lesson.ai_summary:
         return lesson
 
-    # Prevenção contra falhas: Se a aula não tiver conteúdo, usamos um prompt instrucional de segurança
-    # String quebrada em múltiplas linhas para respeitar o limite de caracteres do flake8 (PEP8)
+    # Prevenção contra falhas: Prompt instrucional caso falte conteúdo
     content_to_use = (
         lesson.content
         if lesson.content and len(lesson.content.strip()) > 10
         else (
             f"Aula introdutória e explicativa sobre o tema: {lesson.title}. "
-            "Aborde conceitos fundamentais, teorias e exemplos práticos para os alunos."
+            "Aborde conceitos fundamentais, teorias e exemplos práticos."
         )
     )
 
     try:
-        # Aciona a Chain of Responsibility (Gemini 2.5 -> Fallback Groq)
+        # Aciona a Chain of Responsibility (Gemini -> Fallback Groq)
         summary_markdown = await generate_lesson_summary(lesson.title, content_to_use)
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
@@ -133,3 +135,62 @@ async def generate_smart_summary(
     )
 
     return updated_lesson
+
+
+# ==========================================
+# ECOSSISTEMA OFFLINE - EXPORTAÇÃO PDF (SPRINT 8)
+# ==========================================
+@router.get(
+    "/lessons/{lesson_id}/pdf-summary",
+    response_class=StreamingResponse,
+    summary="Download do Resumo Inteligente em PDF",
+)
+async def download_lesson_summary_pdf(
+    lesson_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Gera dinamicamente um arquivo PDF elegante contendo o Smart Summary da aula.
+    Retorna como StreamingResponse para download imediato.
+    """
+    lesson = await crud_lesson.get_lesson_by_id(db, lesson_id)
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Aula não encontrada.")
+
+    # 1. Verificação de Acesso: Apenas alunos matriculados ou donos do curso
+    course = await crud_course.get_course_by_id(db, lesson.course_id)
+    is_manager = current_user.role == Role.admin or course.creator_id == current_user.id
+
+    if not is_manager:
+        enrollment = await crud_enrollment.get_enrollment(
+            db, user_id=current_user.id, course_id=course.id
+        )
+        if not enrollment:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acesso negado. Matricule-se no curso para baixar este material.",
+            )
+
+    # 2. Verifica se a IA já gerou o resumo
+    if not lesson.ai_summary:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="O Resumo Inteligente ainda não foi gerado pelo professor.",
+        )
+
+    # 3. Geração do PDF em Memória (BytesIO)
+    pdf_bytes = generate_lesson_summary_pdf(
+        lesson_title=lesson.title,
+        summary_content=lesson.ai_summary,
+    )
+
+    # 4. Retorno em Stream com o header forçando o Download
+    filename = f"Resumo_Aula_{lesson.id}.pdf"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+
+    return StreamingResponse(
+        pdf_bytes,
+        media_type="application/pdf",
+        headers=headers,
+    )

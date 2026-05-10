@@ -21,6 +21,14 @@ interface GuestInstructor {
   picture: string;
 }
 
+// Interface local para tipar a lista de Quizzes (Refatoração 1:N)
+interface LocalQuizResponse {
+  id: number;
+  lesson_id: number;
+  title: string;
+  weight: number;
+}
+
 type StatusFilter = 'all' | 'published' | 'draft';
 
 const getMaterialIcon = (type: string) => {
@@ -28,7 +36,7 @@ const getMaterialIcon = (type: string) => {
     case 'pdf':      return '📄';
     case 'video':    return '🎞️';
     case 'doc':      return '📝';
-    case 'article': return '📰';
+    case 'article':  return '📰';
     default:         return '🔗';
   }
 };
@@ -65,19 +73,19 @@ const AILoadingSkeleton = () => (
 );
 
 // ==========================================
-// RENDERIZADOR MARKDOWN (Otimizado e Blindado)
+// RENDERIZADOR MARKDOWN (Otimizado)
 // ==========================================
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const markdownComponents: any = {
-  h1: ({ node, ...props }: any) => <h1 style={{ fontSize: '1.4rem', color: 'var(--accent)', marginTop: 0, marginBottom: '0.8rem' }} {...props} />,
-  h2: ({ node, ...props }: any) => <h2 style={{ fontSize: '1.2rem', color: 'var(--text-h)', marginTop: '1.2rem', marginBottom: '0.6rem' }} {...props} />,
-  h3: ({ node, ...props }: any) => <h3 style={{ fontSize: '1.1rem', color: 'var(--text-h)', marginTop: '1rem', marginBottom: '0.5rem' }} {...props} />,
-  p:  ({ node, ...props }: any) => <p style={{ lineHeight: 1.6, marginBottom: '1rem' }} {...props} />,
-  ul: ({ node, ...props }: any) => <ul style={{ paddingLeft: '1.5rem', marginBottom: '1rem' }} {...props} />,
-  ol: ({ node, ...props }: any) => <ol style={{ paddingLeft: '1.5rem', marginBottom: '1rem' }} {...props} />,
-  li: ({ node, ...props }: any) => <li style={{ marginBottom: '0.4rem', lineHeight: 1.5 }} {...props} />,
-  strong: ({ node, ...props }: any) => <strong style={{ color: 'var(--accent)' }} {...props} />
+  h1: ({ node: _node, ...props }: any) => <h1 style={{ fontSize: '1.4rem', color: 'var(--accent)', marginTop: 0, marginBottom: '0.8rem' }} {...props} />,
+  h2: ({ node: _node, ...props }: any) => <h2 style={{ fontSize: '1.2rem', color: 'var(--text-h)', marginTop: '1.2rem', marginBottom: '0.6rem' }} {...props} />,
+  h3: ({ node: _node, ...props }: any) => <h3 style={{ fontSize: '1.1rem', color: 'var(--text-h)', marginTop: '1rem', marginBottom: '0.5rem' }} {...props} />,
+  p:  ({ node: _node, ...props }: any) => <p style={{ lineHeight: 1.6, marginBottom: '1rem' }} {...props} />,
+  ul: ({ node: _node, ...props }: any) => <ul style={{ paddingLeft: '1.5rem', marginBottom: '1rem' }} {...props} />,
+  ol: ({ node: _node, ...props }: any) => <ol style={{ paddingLeft: '1.5rem', marginBottom: '1rem' }} {...props} />,
+  li: ({ node: _node, ...props }: any) => <li style={{ marginBottom: '0.4rem', lineHeight: 1.5 }} {...props} />,
+  strong: ({ node: _node, ...props }: any) => <strong style={{ color: 'var(--accent)' }} {...props} />
 };
 /* eslint-enable @typescript-eslint/no-unused-vars */
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -93,16 +101,19 @@ export function CourseDetails() {
   const [course, setCourse] = useState<Course | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [materialsRecord, setMaterialsRecord] = useState<Record<number, Material[]>>({});
+  
+  // Novo Estado para suportar Múltiplos Quizzes por aula (Sprint 8)
+  const [quizzesRecord, setQuizzesRecord] = useState<Record<number, LocalQuizResponse[]>>({});
 
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeLessonIdForMaterial, setActiveLessonIdForMaterial] = useState<number | null>(null);
-
   const [activeLessonIdForQuiz, setActiveLessonIdForQuiz] = useState<number | null>(null);
-  const [activeLessonIdForTakeQuiz, setActiveLessonIdForTakeQuiz] = useState<number | null>(null);
-  const [activeLessonIdForGrading, setActiveLessonIdForGrading] = useState<number | null>(null);
 
-  // Estado de processamento da Inteligência Artificial (Isolado por ID da Aula)
+  // Estados com contexto de Aula + Quiz (Preparação para Atualização dos Modais)
+  const [activeQuizForTake, setActiveQuizForTake] = useState<{ lessonId: number; quizId: number } | null>(null);
+  const [activeQuizForGrading, setActiveQuizForGrading] = useState<{ lessonId: number; quizId: number } | null>(null);
+
   const [isGeneratingAI, setIsGeneratingAI] = useState<Record<number, boolean>>({});
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -132,16 +143,28 @@ export function CourseDetails() {
       setLessons(visibleLessons);
 
       if (visibleLessons.length > 0) {
+        // Fetch de Materiais
         const materialsResponses = await Promise.allSettled(
           visibleLessons.map((l) => api.get(`/lessons/${l.id}/materials`))
         );
         const newMaterialsRecord: Record<number, Material[]> = {};
+        
+        // Fetch de Quizzes (Novo Suporte 1:N)
+        const quizzesResponses = await Promise.allSettled(
+          visibleLessons.map((l) => api.get(`/lessons/${l.id}/quizzes`))
+        );
+        const newQuizzesRecord: Record<number, LocalQuizResponse[]> = {};
+
         visibleLessons.forEach((lesson, index) => {
-          const res = materialsResponses[index];
-          newMaterialsRecord[lesson.id] =
-            res.status === 'fulfilled' ? res.value.data : [];
+          const matRes = materialsResponses[index];
+          newMaterialsRecord[lesson.id] = matRes.status === 'fulfilled' ? matRes.value.data : [];
+
+          const quizRes = quizzesResponses[index];
+          newQuizzesRecord[lesson.id] = quizRes.status === 'fulfilled' ? quizRes.value.data : [];
         });
+
         setMaterialsRecord(newMaterialsRecord);
+        setQuizzesRecord(newQuizzesRecord);
       }
 
       const currentEnrollment: Enrollment | undefined = enrollmentsRes.data.find(
@@ -181,13 +204,15 @@ export function CourseDetails() {
     fetchGuestInstructor();
   }, [fetchData]);
 
-  // Função de Gatilho da IA (LLM Router) com Tratamento Resiliente
+  // ==========================================
+  // MANIPULADORES DE AÇÕES
+  // ==========================================
   const handleGenerateAISummary = async (lessonId: number) => {
     setIsGeneratingAI(prev => ({ ...prev, [lessonId]: true }));
     try {
       await api.post(`/lessons/${lessonId}/ai-summary`);
       toast.success('Smart Summary gerado com sucesso!', { icon: '✨' });
-      fetchData(); // Recarrega a aula para exibir o resumo via Cache do DB
+      fetchData(); 
     } catch (error) {
       if (isAxiosError(error)) {
         toast.error(error.response?.data?.detail || 'Erro ao gerar resumo pela IA.');
@@ -196,6 +221,32 @@ export function CourseDetails() {
       }
     } finally {
       setIsGeneratingAI(prev => ({ ...prev, [lessonId]: false }));
+    }
+  };
+
+  const handleDownloadSummaryPDF = async (lessonId: number, lessonTitle: string) => {
+    const toastId = toast.loading('A preparar o PDF...', { icon: '⏳' });
+    try {
+      // Configuração para processar StreamingResponse do FastAPI
+      const response = await api.get(`/lessons/${lessonId}/pdf-summary`, {
+        responseType: 'blob'
+      });
+      
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Resumo_${lessonTitle.replace(/\s+/g, '_')}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('PDF transferido com sucesso!', { id: toastId, icon: '📥' });
+    } catch {
+      // Correção do linter: bloco catch vazio já que o 'error' não é usado internamente
+      toast.error('Não foi possível transferir o PDF.', { id: toastId });
     }
   };
 
@@ -218,6 +269,17 @@ export function CourseDetails() {
       fetchData();
     } catch {
       toast.error('Erro ao remover material.');
+    }
+  };
+
+  const handleDeleteQuiz = async (lessonId: number, quizId: number) => {
+    if (!window.confirm('Excluir esta avaliação permanentemente? Todos os boletins dos alunos serão perdidos.')) return;
+    try {
+      await api.delete(`/lessons/${lessonId}/quizzes/${quizId}`);
+      toast.success('Avaliação removida com sucesso.');
+      fetchData();
+    } catch {
+      toast.error('Erro ao remover avaliação.');
     }
   };
 
@@ -292,7 +354,7 @@ export function CourseDetails() {
         </div>
       )}
 
-      {/* ── TOOLBAR: FILTRO + BOTÃO ADICIONAR AULA ── */}
+      {/* ── TOOLBAR ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <h3 style={{ margin: 0 }}>Conteúdo Programático ({filteredLessons.length})</h3>
 
@@ -320,6 +382,7 @@ export function CourseDetails() {
           {filteredLessons.map((lesson, index) => {
             const isCompleted = completedLessons.includes(lesson.id);
             const lessonMaterials = materialsRecord[lesson.id] ?? [];
+            const lessonQuizzes = quizzesRecord[lesson.id] ?? []; // Múltiplos Quizzes
 
             return (
               <div key={lesson.id} style={{
@@ -330,7 +393,6 @@ export function CourseDetails() {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
 
-                  {/* Esquerda: Número e Título */}
                   <div style={{ display: 'flex', gap: '1rem' }}>
                     <span style={{ fontWeight: 'bold', color: 'var(--accent)', minWidth: '25px', paddingTop: '2px', fontSize: '1.2rem' }}>
                       {index + 1}.
@@ -356,7 +418,6 @@ export function CourseDetails() {
                     </div>
                   </div>
 
-                  {/* Direita: Botões de Ação */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', flexWrap: 'wrap' }}>
                     {canManage && (
                       <>
@@ -364,29 +425,21 @@ export function CourseDetails() {
                           + Material
                         </button>
                         <button onClick={() => setActiveLessonIdForQuiz(lesson.id)} style={{ background: 'transparent', border: '1px dashed var(--accent)', color: 'var(--accent)', cursor: 'pointer', padding: '0.5rem 1rem', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' }}>
-                          📝 Prova
-                        </button>
-                        <button onClick={() => setActiveLessonIdForGrading(lesson.id)} style={{ background: 'transparent', border: '1px solid #2e7d32', color: '#2e7d32', cursor: 'pointer', padding: '0.5rem 1rem', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' }}>
-                          📊 Corrigir
+                          📝 + Avaliação
                         </button>
                       </>
                     )}
                     {enrollment && !canManage && (
-                      <>
-                        <button onClick={() => setActiveLessonIdForTakeQuiz(lesson.id)} style={{ background: 'transparent', border: '1px dashed var(--accent)', color: 'var(--accent)', cursor: 'pointer', padding: '0.5rem 1rem', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold' }}>
-                          📝 Fazer Prova
-                        </button>
-                        <button onClick={() => handleMarkAsComplete(lesson.id)} disabled={isCompleted} style={{
-                          background: isCompleted ? '#2e7d32' : 'transparent',
-                          color: isCompleted ? 'white' : 'var(--text)',
-                          border: isCompleted ? 'none' : '1px solid var(--border)',
-                          cursor: isCompleted ? 'default' : 'pointer',
-                          padding: '0.5rem 1rem', borderRadius: '6px', fontSize: '12px',
-                          fontWeight: 'bold', transition: 'all 0.3s ease',
-                        }}>
-                          {isCompleted ? '✓ Concluída' : 'Concluir Aula'}
-                        </button>
-                      </>
+                      <button onClick={() => handleMarkAsComplete(lesson.id)} disabled={isCompleted} style={{
+                        background: isCompleted ? '#2e7d32' : 'transparent',
+                        color: isCompleted ? 'white' : 'var(--text)',
+                        border: isCompleted ? 'none' : '1px solid var(--border)',
+                        cursor: isCompleted ? 'default' : 'pointer',
+                        padding: '0.5rem 1rem', borderRadius: '6px', fontSize: '12px',
+                        fontWeight: 'bold', transition: 'all 0.3s ease',
+                      }}>
+                        {isCompleted ? '✓ Concluída' : 'Concluir Aula'}
+                      </button>
                     )}
                     {canManage && (
                       <button onClick={() => handleDeleteLesson(lesson.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }} title="Excluir aula">🗑️</button>
@@ -394,11 +447,76 @@ export function CourseDetails() {
                   </div>
                 </div>
 
-                {/* ── INTEGRAÇÃO IA: SMART SUMMARY ── */}
+                {/* ── SEÇÃO: MATERIAIS DE APOIO ── */}
+                {lessonMaterials.length > 0 && (
+                  <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px dashed var(--border)' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '0.8rem', color: 'var(--text)' }}>
+                      Materiais de Apoio:
+                    </div>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {lessonMaterials.map((material) => (
+                        <li key={material.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg)', padding: '0.6rem 1rem', borderRadius: '6px', fontSize: '14px' }}>
+                          <a href={material.url} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 500 }}>
+                            {getMaterialIcon(material.type)} {material.title}
+                          </a>
+                          {canManage && (
+                            <button onClick={() => handleDeleteMaterial(material.id)} style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: '0 0.5rem', fontSize: '16px' }} title="Remover Material">✖</button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* ── SEÇÃO: AVALIAÇÕES MÚLTIPLAS (SPRINT 8) ── */}
+                {lessonQuizzes.length > 0 && (
+                  <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px dashed var(--border)' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '0.8rem', color: 'var(--text)' }}>
+                      Avaliações Disponíveis:
+                    </div>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {lessonQuizzes.map((quiz) => (
+                        <li key={quiz.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg)', padding: '0.6rem 1rem', borderRadius: '6px', fontSize: '14px', borderLeft: '3px solid var(--accent)' }}>
+                          <span style={{ color: 'var(--text-h)', fontWeight: 600 }}>📝 {quiz.title}</span>
+                          
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            {canManage ? (
+                              <>
+                                <button onClick={() => setActiveQuizForGrading({ lessonId: lesson.id, quizId: quiz.id })} style={{ background: 'transparent', border: '1px solid #2e7d32', color: '#2e7d32', cursor: 'pointer', padding: '0.3rem 0.8rem', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>
+                                  📊 Corrigir Provas
+                                </button>
+                                <button onClick={() => handleDeleteQuiz(lesson.id, quiz.id)} style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: '0 0.5rem', fontSize: '16px' }} title="Remover Avaliação">✖</button>
+                              </>
+                            ) : (
+                              <button onClick={() => setActiveQuizForTake({ lessonId: lesson.id, quizId: quiz.id })} style={{ background: 'transparent', border: '1px dashed var(--accent)', color: 'var(--accent)', cursor: 'pointer', padding: '0.3rem 0.8rem', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>
+                                📝 Fazer Prova / Ver Boletim
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* ── INTEGRAÇÃO IA E EXPORTAÇÃO DE PDF (SPRINT 8) ── */}
                 {(lesson.ai_summary || canManage || isGeneratingAI[lesson.id]) && (
                   <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px dashed var(--border)' }}>
-                    <div style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '1rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      ✨ Resumo Inteligente (AI)
+                    <div style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '1rem', color: 'var(--text)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>✨ Resumo Inteligente (AI)</span>
+                      
+                      {/* Botão de Exportação para PDF injetado aqui */}
+                      {lesson.ai_summary && (
+                        <button
+                          onClick={() => handleDownloadSummaryPDF(lesson.id, lesson.title)}
+                          style={{
+                            background: 'transparent', border: '1px solid var(--accent)', color: 'var(--accent)',
+                            padding: '0.3rem 0.8rem', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer',
+                          }}
+                        >
+                          📥 Exportar PDF
+                        </button>
+                      )}
                     </div>
 
                     {isGeneratingAI[lesson.id] ? (
@@ -408,7 +526,6 @@ export function CourseDetails() {
                         background: 'var(--social-bg)', padding: '1.5rem', borderRadius: '8px',
                         fontSize: '15px', color: 'var(--text-h)', border: '1px solid var(--accent-border)'
                       }}>
-                        {/* Renderizador Estilizado de Markdown */}
                         <ReactMarkdown components={markdownComponents}>
                           {lesson.ai_summary}
                         </ReactMarkdown>
@@ -438,27 +555,6 @@ export function CourseDetails() {
                     )}
                   </div>
                 )}
-
-                {/* Materiais de apoio */}
-                {lessonMaterials.length > 0 && (
-                  <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px dashed var(--border)' }}>
-                    <div style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '0.8rem', color: 'var(--text)' }}>
-                      Materiais de Apoio:
-                    </div>
-                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      {lessonMaterials.map((material) => (
-                        <li key={material.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg)', padding: '0.6rem 1rem', borderRadius: '6px', fontSize: '14px' }}>
-                          <a href={material.url} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 500 }}>
-                            {getMaterialIcon(material.type)} {material.title}
-                          </a>
-                          {canManage && (
-                            <button onClick={() => handleDeleteMaterial(material.id)} style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: '0 0.5rem', fontSize: '16px' }} title="Remover Material">✖</button>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
               </div>
             );
           })}
@@ -468,9 +564,19 @@ export function CourseDetails() {
       {/* Modais */}
       {isModalOpen && canManage && <CreateLessonModal courseId={Number(id)} onClose={() => setIsModalOpen(false)} onSuccess={fetchData} />}
       {activeLessonIdForMaterial !== null && canManage && <CreateMaterialModal lessonId={activeLessonIdForMaterial} onClose={() => setActiveLessonIdForMaterial(null)} onSuccess={fetchData} />}
+      
+      {/* Modal de Criação mantém apenas lessonId, cria novo quiz associado à aula */}
       {activeLessonIdForQuiz !== null && canManage && <CreateQuizModal lessonId={activeLessonIdForQuiz} onClose={() => setActiveLessonIdForQuiz(null)} onSuccess={fetchData} />}
-      {activeLessonIdForGrading !== null && canManage && <GradeQuizModal lessonId={activeLessonIdForGrading} onClose={() => setActiveLessonIdForGrading(null)} />}
-      {activeLessonIdForTakeQuiz !== null && !canManage && <TakeQuizModal lessonId={activeLessonIdForTakeQuiz} onClose={() => setActiveLessonIdForTakeQuiz(null)} onSuccess={fetchData} />}
+      
+      {/* Modais de consumo são alimentados com lessonId e quizId (Ignorados no Linter temporariamente) */}
+      {activeQuizForGrading !== null && canManage && (
+        // @ts-expect-error - Refatoração Sprint 8: quizId será incorporado no GradeQuizModal na próxima etapa
+        <GradeQuizModal lessonId={activeQuizForGrading.lessonId} quizId={activeQuizForGrading.quizId} onClose={() => setActiveQuizForGrading(null)} />
+      )}
+      {activeQuizForTake !== null && !canManage && (
+        // @ts-expect-error - Refatoração Sprint 8: quizId será incorporado no TakeQuizModal na próxima etapa
+        <TakeQuizModal lessonId={activeQuizForTake.lessonId} quizId={activeQuizForTake.quizId} onClose={() => setActiveQuizForTake(null)} onSuccess={fetchData} />
+      )}
     </div>
   );
 }

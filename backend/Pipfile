@@ -18,6 +18,7 @@ email-validator = "*"
 bcrypt = "==4.0.1"
 groq = "*"
 google-genai = "*"
+fpdf2 = "*"
 
 [dev-packages]
 black = "*"

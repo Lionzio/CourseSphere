@@ -12,6 +12,7 @@ import type {
 
 interface TakeQuizModalProps {
   lessonId: number;
+  quizId: number; // SPRINT 8: Nova prop para suportar múltiplos quizzes
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -111,7 +112,7 @@ function AnswerRow({ answer, index, questionText }: AnswerRowProps) {
 // COMPONENTE PRINCIPAL
 // ==========================================
 
-export function TakeQuizModal({ lessonId, onClose, onSuccess }: TakeQuizModalProps) {
+export function TakeQuizModal({ lessonId, quizId, onClose, onSuccess }: TakeQuizModalProps) {
   const [quiz, setQuiz] = useState<QuizResponse | null>(null);
   const [attempt, setAttempt] = useState<QuizAttemptResponse | null>(null);
   const [answers, setAnswers] = useState<StudentAnswersState>({});
@@ -122,11 +123,11 @@ export function TakeQuizModal({ lessonId, onClose, onSuccess }: TakeQuizModalPro
   useEffect(() => {
     const fetchQuizData = async () => {
       try {
-        // 1. Verifica se o aluno já tem uma tentativa registada
+        // 1. Verifica se o aluno já tem uma tentativa registada para este quiz
         try {
-          const attemptRes = await api.get(`/lessons/${lessonId}/quizzes/attempts/my`);
+          const attemptRes = await api.get(`/lessons/${lessonId}/quizzes/${quizId}/attempts/my`);
           setAttempt(attemptRes.data);
-          const quizRes = await api.get(`/lessons/${lessonId}/quizzes`);
+          const quizRes = await api.get(`/lessons/${lessonId}/quizzes/${quizId}`);
           setQuiz(quizRes.data);
           setIsLoading(false);
           return;
@@ -136,7 +137,7 @@ export function TakeQuizModal({ lessonId, onClose, onSuccess }: TakeQuizModalPro
         }
 
         // 2. Carrega a prova em branco
-        const quizRes = await api.get(`/lessons/${lessonId}/quizzes`);
+        const quizRes = await api.get(`/lessons/${lessonId}/quizzes/${quizId}`);
         setQuiz(quizRes.data);
       } catch (error) {
         if (isAxiosError(error) && error.response?.status === 404) {
@@ -151,7 +152,9 @@ export function TakeQuizModal({ lessonId, onClose, onSuccess }: TakeQuizModalPro
     };
 
     fetchQuizData();
-  }, [lessonId, onClose]);
+  }, [lessonId, quizId, onClose]);
+
+  // ── MANIPULADORES DE ESTADO ────────────────────────────────────────────────
 
   const handleOptionChange = (questionId: number, optionId: number) => {
     setAnswers(prev => ({
@@ -166,6 +169,8 @@ export function TakeQuizModal({ lessonId, onClose, onSuccess }: TakeQuizModalPro
       [questionId]: { ...prev[questionId], text_answer: text },
     }));
   };
+
+  // ── AÇÕES NA API ───────────────────────────────────────────────────────────
 
   const handleSubmit = async () => {
     if (!quiz) return;
@@ -186,7 +191,7 @@ export function TakeQuizModal({ lessonId, onClose, onSuccess }: TakeQuizModalPro
         })),
       };
 
-      const res = await api.post(`/lessons/${lessonId}/quizzes/attempts`, payload);
+      const res = await api.post(`/lessons/${lessonId}/quizzes/${quizId}/attempts`, payload);
       const submittedAttempt: QuizAttemptResponse = res.data;
       setAttempt(submittedAttempt);
 
@@ -206,6 +211,32 @@ export function TakeQuizModal({ lessonId, onClose, onSuccess }: TakeQuizModalPro
       }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Função para exportação de PDF (Sprint 8)
+  const handleDownloadPDF = async () => {
+    if (!attempt) return;
+    const toastId = toast.loading('A preparar o seu boletim em PDF...', { icon: '⏳' });
+    try {
+      const response = await api.get(`/lessons/${lessonId}/quizzes/${quizId}/attempts/${attempt.id}/pdf`, {
+        responseType: 'blob'
+      });
+      
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Boletim_Avaliacao_${quizId}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Boletim transferido com sucesso!', { id: toastId, icon: '📥' });
+    } catch {
+      toast.error('Não foi possível transferir o Boletim em PDF.', { id: toastId });
     }
   };
 
@@ -329,13 +360,23 @@ export function TakeQuizModal({ lessonId, onClose, onSuccess }: TakeQuizModalPro
             ))}
           </div>
 
-          <button
-            onClick={onClose}
-            className="counter"
-            style={{ background: 'var(--accent)', color: 'white', padding: '0.8rem 2.5rem', fontWeight: 'bold', margin: 0 }}
-          >
-            Fechar
-          </button>
+          {/* Botões do Rodapé (Sprint 8: Inclusão do botão de exportação PDF) */}
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={onClose}
+              className="counter"
+              style={{ background: 'transparent', color: 'var(--text)', border: '1px solid var(--border)', padding: '0.8rem 2.5rem', fontWeight: 'bold', margin: 0 }}
+            >
+              Fechar
+            </button>
+            <button
+              onClick={handleDownloadPDF}
+              className="counter"
+              style={{ background: 'var(--accent)', color: 'white', padding: '0.8rem 2.5rem', fontWeight: 'bold', margin: 0, border: 'none' }}
+            >
+              📥 Baixar PDF
+            </button>
+          </div>
         </div>
       </div>
     );

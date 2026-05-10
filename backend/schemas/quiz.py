@@ -47,9 +47,9 @@ class QuestionCreate(QuestionBase):
     @model_validator(mode="after")
     def validate_options(self) -> "QuestionCreate":
         """
-        Validação avançada de Regras de Negócio Nível Enterprise:
-        - Múltipla escolha: Exige >= 2 opções e pelo menos 1 correta.
-        - Aberta: Não deve possuir opções (são ignoradas ou bloqueadas).
+        Validação e Sanitização.
+        BUGFIX SPRINT 8: Esvazia as opções silenciosamente se for questão aberta,
+        protegendo o sistema contra lixo residual do frontend.
         """
         if self.question_type == "multiple_choice":
             if len(self.options) < 2:
@@ -58,13 +58,13 @@ class QuestionCreate(QuestionBase):
                 )
             if not any(opt.is_correct for opt in self.options):
                 raise ValueError(
-                    "Questões de múltipla escolha devem ter pelo menos 1 opção marcada como correta."
+                    "Questões de múltipla escolha devem ter pelo menos 1 opção "
+                    "marcada como correta."
                 )
         elif self.question_type == "open":
-            if len(self.options) > 0:
-                raise ValueError(
-                    "Questões abertas/discursivas não devem possuir alternativas cadastradas."
-                )
+            # Sanitizing: Garante que questões abertas nunca salvam alternativas fantasmas
+            self.options = []
+
         return self
 
 
