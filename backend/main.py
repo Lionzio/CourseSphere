@@ -17,6 +17,7 @@ from api.admin import router as admin_router
 from api.enrollments import router as enrollments_router
 from api.materials import router as materials_router
 from api.quizzes import router as quizzes_router
+from api.analytics import router as analytics_router
 
 
 @asynccontextmanager
@@ -92,3 +93,6 @@ async def root():
         "status": "Operando com sucesso",
         "version": "1.0.0",
     }
+
+
+app.include_router(analytics_router, prefix="/api/v1/analytics", tags=["Analytics"])

@@ -110,7 +110,7 @@ export function CourseDetails() {
   const [activeLessonIdForMaterial, setActiveLessonIdForMaterial] = useState<number | null>(null);
   const [activeLessonIdForQuiz, setActiveLessonIdForQuiz] = useState<number | null>(null);
 
-  // Estados com contexto de Aula + Quiz (Preparação para Atualização dos Modais)
+  // Estados com contexto de Aula + Quiz
   const [activeQuizForTake, setActiveQuizForTake] = useState<{ lessonId: number; quizId: number } | null>(null);
   const [activeQuizForGrading, setActiveQuizForGrading] = useState<{ lessonId: number; quizId: number } | null>(null);
 
@@ -149,7 +149,7 @@ export function CourseDetails() {
         );
         const newMaterialsRecord: Record<number, Material[]> = {};
         
-        // Fetch de Quizzes (Novo Suporte 1:N)
+        // Fetch de Quizzes (Suporte 1:N)
         const quizzesResponses = await Promise.allSettled(
           visibleLessons.map((l) => api.get(`/lessons/${l.id}/quizzes`))
         );
@@ -245,7 +245,6 @@ export function CourseDetails() {
       
       toast.success('PDF transferido com sucesso!', { id: toastId, icon: '📥' });
     } catch {
-      // Correção do linter: bloco catch vazio já que o 'error' não é usado internamente
       toast.error('Não foi possível transferir o PDF.', { id: toastId });
     }
   };
@@ -505,7 +504,7 @@ export function CourseDetails() {
                     <div style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '1rem', color: 'var(--text)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>✨ Resumo Inteligente (AI)</span>
                       
-                      {/* Botão de Exportação para PDF injetado aqui */}
+                      {/* Botão de Exportação para PDF */}
                       {lesson.ai_summary && (
                         <button
                           onClick={() => handleDownloadSummaryPDF(lesson.id, lesson.title)}
@@ -565,16 +564,14 @@ export function CourseDetails() {
       {isModalOpen && canManage && <CreateLessonModal courseId={Number(id)} onClose={() => setIsModalOpen(false)} onSuccess={fetchData} />}
       {activeLessonIdForMaterial !== null && canManage && <CreateMaterialModal lessonId={activeLessonIdForMaterial} onClose={() => setActiveLessonIdForMaterial(null)} onSuccess={fetchData} />}
       
-      {/* Modal de Criação mantém apenas lessonId, cria novo quiz associado à aula */}
+      {/* Modal de Criação */}
       {activeLessonIdForQuiz !== null && canManage && <CreateQuizModal lessonId={activeLessonIdForQuiz} onClose={() => setActiveLessonIdForQuiz(null)} onSuccess={fetchData} />}
       
-      {/* Modais de consumo são alimentados com lessonId e quizId (Ignorados no Linter temporariamente) */}
+      {/* Modais de Consumo / Correção (Limpos dos supressores) */}
       {activeQuizForGrading !== null && canManage && (
-        // @ts-expect-error - Refatoração Sprint 8: quizId será incorporado no GradeQuizModal na próxima etapa
         <GradeQuizModal lessonId={activeQuizForGrading.lessonId} quizId={activeQuizForGrading.quizId} onClose={() => setActiveQuizForGrading(null)} />
       )}
       {activeQuizForTake !== null && !canManage && (
-        // @ts-expect-error - Refatoração Sprint 8: quizId será incorporado no TakeQuizModal na próxima etapa
         <TakeQuizModal lessonId={activeQuizForTake.lessonId} quizId={activeQuizForTake.quizId} onClose={() => setActiveQuizForTake(null)} onSuccess={fetchData} />
       )}
     </div>

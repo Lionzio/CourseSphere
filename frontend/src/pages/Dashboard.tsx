@@ -1,15 +1,47 @@
+// frontend/src/pages/Dashboard.tsx
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { isAxiosError } from 'axios';
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from 'recharts';
 import api from '../services/api';
 import { useAuthStore } from '../stores/auth';
 import { CreateCourseModal } from '../components/CreateCourseModal';
 import type { Course } from '../schemas/course';
 import type { Enrollment } from '../schemas/enrollment';
 
+// ==========================================
+// TIPOS ANALÍTICOS (Sprint 9)
+// ==========================================
+interface GradeEvolutionItem {
+  quiz_title: string;
+  score: number;
+  completed_at: string;
+}
+
+interface StudentAnalytics {
+  average_completion: number;
+  completed_evaluations: number;
+  pending_evaluations: number;
+  grade_evolution: GradeEvolutionItem[];
+}
+
+interface CoursePerformanceItem {
+  course_name: string;
+  average_score: number;
+  total_attempts: number;
+}
+
+interface TeacherAnalytics {
+  total_students: number;
+  pending_corrections: number;
+  course_performance: CoursePerformanceItem[];
+}
+
 type SortOrder = 'newest' | 'oldest' | 'name';
-type Tab = 'my_courses' | 'catalog';
+type Tab = 'my_courses' | 'catalog' | 'analytics'; // Nova aba adicionada
 
 const formatDate = (dateString: string) => {
   if (!dateString) return '';
@@ -17,6 +49,24 @@ const formatDate = (dateString: string) => {
   return `${day}/${month}/${year}`;
 };
 
+// Sub-componente para exibição visual de métricas
+const StatCard = ({ title, value, icon, color }: { title: string, value: string | number, icon: string, color: string }) => (
+  <div style={{
+    background: 'var(--code-bg)', padding: '1.5rem', borderRadius: '8px',
+    border: '1px solid var(--border)', borderLeft: `4px solid ${color}`,
+    display: 'flex', alignItems: 'center', gap: '1.2rem', boxShadow: '0 4px 6px rgba(0,0,0,0.05)'
+  }}>
+    <div style={{ fontSize: '2.2rem' }}>{icon}</div>
+    <div>
+      <div style={{ fontSize: '11px', color: 'var(--text)', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: '0.5px' }}>{title}</div>
+      <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--text-h)', lineHeight: 1.2 }}>{value}</div>
+    </div>
+  </div>
+);
+
+// ==========================================
+// COMPONENTE PRINCIPAL
+// ==========================================
 export function Dashboard() {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
@@ -25,14 +75,17 @@ export function Dashboard() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   
-  const [activeTab, setActiveTab] = useState<Tab>(user?.role === 'student' ? 'my_courses' : 'catalog');
+  // Estados dos Gráficos
+  const [studentStats, setStudentStats] = useState<StudentAnalytics | null>(null);
+  const [teacherStats, setTeacherStats] = useState<TeacherAnalytics | null>(null);
+  
+  const [activeTab, setActiveTab] = useState<Tab>(user?.role === 'student' ? 'my_courses' : 'analytics');
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Permissão global para criar novos cursos
   const canManageCourses = user?.role === 'teacher' || user?.role === 'admin';
   const isAdmin = user?.role === 'admin' || user?.email === 'viniciusleoncio3267@gmail.com';
 
@@ -45,12 +98,25 @@ export function Dashboard() {
       ]);
       setCourses(coursesRes.data);
       setEnrollments(enrollmentsRes.data);
+
+      // Consumo inteligente dos endpoints analíticos baseados no papel (RBAC)
+      if (user?.role === 'student') {
+        const sStats = await api.get('/analytics/student');
+        setStudentStats(sStats.data);
+      } else {
+        const [tStatsRes, sStatsRes] = await Promise.allSettled([
+          api.get('/analytics/teacher'),
+          api.get('/analytics/student') // Traz dados de aluno caso o professor esteja matriculado noutro curso
+        ]);
+        if (tStatsRes.status === 'fulfilled') setTeacherStats(tStatsRes.value.data);
+        if (sStatsRes.status === 'fulfilled') setStudentStats(sStatsRes.value.data);
+      }
     } catch {
       toast.error('Erro ao carregar dados do painel.');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [user]); // <-- BUGFIX: Passando o objeto 'user' inteiro para preservar a memoização do React Compiler
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -96,12 +162,9 @@ export function Dashboard() {
 
   const displayedCourses = filteredCourses.filter(course => {
     if (activeTab === 'catalog') return true;
-    
-    // Na aba "Minhas Matrículas", mostramos o que o utilizador criou OU o que ele se matriculou
     const isCreator = course.creator_id === user?.id;
     const isEnrolled = enrollments.some(e => e.course_id === course.id);
     return isCreator || isEnrolled;
-
   }).sort((a, b) => {
     if (sortOrder === 'name') return a.name.localeCompare(b.name);
     if (sortOrder === 'oldest') return new Date(a.start_date).getTime() - new Date(b.start_date).getTime();
@@ -132,11 +195,23 @@ export function Dashboard() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>
+        {/* NAVEGAÇÃO DE ABAS */}
+        <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', overflowX: 'auto' }}>
+          <button 
+            onClick={() => setActiveTab('analytics')}
+            style={{ 
+              background: 'transparent', border: 'none', margin: 0, padding: '0.5rem 1rem', cursor: 'pointer', whiteSpace: 'nowrap',
+              fontWeight: activeTab === 'analytics' ? 'bold' : 'normal',
+              color: activeTab === 'analytics' ? 'var(--accent)' : 'var(--text)',
+              borderBottom: activeTab === 'analytics' ? '2px solid var(--accent)' : '2px solid transparent'
+            }}
+          >
+            📊 Painel Analítico
+          </button>
           <button 
             onClick={() => setActiveTab('my_courses')}
             style={{ 
-              background: 'transparent', border: 'none', margin: 0, padding: '0.5rem 1rem', cursor: 'pointer',
+              background: 'transparent', border: 'none', margin: 0, padding: '0.5rem 1rem', cursor: 'pointer', whiteSpace: 'nowrap',
               fontWeight: activeTab === 'my_courses' ? 'bold' : 'normal',
               color: activeTab === 'my_courses' ? 'var(--accent)' : 'var(--text)',
               borderBottom: activeTab === 'my_courses' ? '2px solid var(--accent)' : '2px solid transparent'
@@ -147,7 +222,7 @@ export function Dashboard() {
           <button 
             onClick={() => setActiveTab('catalog')}
             style={{ 
-              background: 'transparent', border: 'none', margin: 0, padding: '0.5rem 1rem', cursor: 'pointer',
+              background: 'transparent', border: 'none', margin: 0, padding: '0.5rem 1rem', cursor: 'pointer', whiteSpace: 'nowrap',
               fontWeight: activeTab === 'catalog' ? 'bold' : 'normal',
               color: activeTab === 'catalog' ? 'var(--accent)' : 'var(--text)',
               borderBottom: activeTab === 'catalog' ? '2px solid var(--accent)' : '2px solid transparent'
@@ -157,32 +232,122 @@ export function Dashboard() {
           </button>
         </div>
 
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          <input 
-            type="text" 
-            placeholder="🔍 Pesquisar curso..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="counter"
-            style={{ margin: 0, flex: '1 1 300px', padding: '0.6rem' }}
-          />
-          <select 
-            value={sortOrder} 
-            onChange={(e) => setSortOrder(e.target.value as SortOrder)} 
-            className="counter"
-            style={{ margin: 0, padding: '0.6rem', background: 'var(--bg)', color: 'var(--text)', cursor: 'pointer', flex: '1 1 200px' }}
-          >
-            <option value="newest">Mais Recentes</option>
-            <option value="oldest">Mais Antigos</option>
-            <option value="name">Ordem Alfabética (A-Z)</option>
-          </select>
-        </div>
-
+        {/* Toolbar escondida na aba Analítica */}
+        {activeTab !== 'analytics' && (
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <input 
+              type="text" 
+              placeholder="🔍 Pesquisar curso..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="counter"
+              style={{ margin: 0, flex: '1 1 300px', padding: '0.6rem' }}
+            />
+            <select 
+              value={sortOrder} 
+              onChange={(e) => setSortOrder(e.target.value as SortOrder)} 
+              className="counter"
+              style={{ margin: 0, padding: '0.6rem', background: 'var(--bg)', color: 'var(--text)', cursor: 'pointer', flex: '1 1 200px' }}
+            >
+              <option value="newest">Mais Recentes</option>
+              <option value="oldest">Mais Antigos</option>
+              <option value="name">Ordem Alfabética (A-Z)</option>
+            </select>
+          </div>
+        )}
       </div>
 
       {isLoading ? (
-        <p>Carregando painel...</p>
+        <p style={{ textAlign: 'center', padding: '2rem' }}>Carregando painel...</p>
+      ) : activeTab === 'analytics' ? (
+        
+        /* ── RENDERIZAÇÃO DO PAINEL ANALÍTICO (SPRINT 9) ── */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3rem', animation: 'fadeIn 0.5s ease-in-out' }}>
+          
+          {/* Sessão do Professor */}
+          {teacherStats && canManageCourses && (
+            <section>
+              <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '1.5rem' }}>👨‍🏫</span> Engajamento dos Meus Cursos
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.2rem', marginBottom: '2rem' }}>
+                <StatCard title="Total de Alunos" value={teacherStats.total_students} icon="👥" color="#1976d2" />
+                <StatCard title="Correções Pendentes" value={teacherStats.pending_corrections} icon="📝" color={teacherStats.pending_corrections > 0 ? '#d32f2f' : '#2e7d32'} />
+              </div>
+              
+              {teacherStats.course_performance.length > 0 ? (
+                <div style={{ background: 'var(--code-bg)', padding: '1.5rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <h4 style={{ marginTop: 0, marginBottom: '1.5rem', textAlign: 'center', color: 'var(--text-h)' }}>Desempenho Médio por Curso</h4>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={teacherStats.course_performance} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                      <XAxis dataKey="course_name" stroke="var(--text)" tick={{fontSize: 12}} />
+                      <YAxis stroke="var(--text)" domain={[0, 100]} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text-h)', borderRadius: '8px' }} 
+                        cursor={{fill: 'var(--social-bg)'}} 
+                      />
+                      <Legend />
+                      <Bar dataKey="average_score" name="Média da Turma (%)" fill="var(--accent)" radius={[4, 4, 0, 0]} barSize={45} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p style={{ color: 'var(--text)', fontStyle: 'italic', background: 'var(--code-bg)', padding: '1.5rem', borderRadius: '8px', border: '1px dashed var(--border)' }}>
+                  Aguarde até que os seus alunos concluam as avaliações para visualizar o gráfico de desempenho.
+                </p>
+              )}
+            </section>
+          )}
+
+          {/* Sessão do Aluno */}
+          {studentStats && (
+            <section>
+              <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '1.5rem' }}>🎓</span> Meu Desempenho
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.2rem', marginBottom: '2rem' }}>
+                <StatCard title="Conclusão Média" value={`${studentStats.average_completion}%`} icon="📈" color="var(--accent)" />
+                <StatCard title="Provas Corrigidas" value={studentStats.completed_evaluations} icon="✅" color="#2e7d32" />
+                <StatCard title="Provas Pendentes" value={studentStats.pending_evaluations} icon="⏳" color="#e67300" />
+              </div>
+              
+              {studentStats.grade_evolution.length > 0 ? (
+                <div style={{ background: 'var(--code-bg)', padding: '1.5rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <h4 style={{ marginTop: 0, marginBottom: '1.5rem', textAlign: 'center', color: 'var(--text-h)' }}>Evolução de Notas</h4>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={studentStats.grade_evolution} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                      <XAxis dataKey="completed_at" stroke="var(--text)" tick={{fontSize: 12}} />
+                      <YAxis stroke="var(--text)" domain={[0, 100]} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text-h)', borderRadius: '8px' }} 
+                        labelStyle={{ color: 'var(--accent)', fontWeight: 'bold', marginBottom: '5px' }}
+                      />
+                      <Legend />
+                      <Line type="monotone" dataKey="score" name="Nota Final (%)" stroke="var(--accent)" strokeWidth={3} activeDot={{ r: 8 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                 <p style={{ color: 'var(--text)', fontStyle: 'italic', background: 'var(--code-bg)', padding: '1.5rem', borderRadius: '8px', border: '1px dashed var(--border)' }}>
+                  Complete avaliações e aguarde a correção para acompanhar o seu gráfico de evolução.
+                </p>
+              )}
+            </section>
+          )}
+
+          <style>{`
+            @keyframes fadeIn {
+              from { opacity: 0; transform: translateY(10px); }
+              to { opacity: 1; transform: translateY(0); }
+            }
+          `}</style>
+        </div>
+
       ) : displayedCourses.length === 0 ? (
+        
+        /* ── RENDERIZAÇÃO DA LISTA DE CURSOS ── */
         <div style={{ padding: '3rem', textAlign: 'center', background: 'var(--social-bg)', borderRadius: '8px', border: '1px dashed var(--border)' }}>
           <p style={{ color: 'var(--text)' }}>
             {activeTab === 'my_courses' 
@@ -193,7 +358,6 @@ export function Dashboard() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
           {displayedCourses.map((course) => {
-            // Lógica de Inteligência do Frontend
             const isCreator = course.creator_id === user?.id;
             const enrollment = enrollments.find(e => e.course_id === course.id);
             const isEnrolled = !!enrollment;
@@ -201,7 +365,6 @@ export function Dashboard() {
             return (
               <div key={course.id} style={{ border: '1px solid var(--border)', padding: '1.5rem', borderRadius: '8px', background: 'var(--code-bg)', position: 'relative', display: 'flex', flexDirection: 'column' }}>
                 
-                {/* Lixeira visível apenas para o criador do curso */}
                 {isCreator && (
                   <button 
                     onClick={() => handleDeleteCourse(course.id)}
@@ -221,7 +384,6 @@ export function Dashboard() {
                   <div><strong>Início:</strong> {formatDate(course.start_date.toString())}</div>
                 </div>
                 
-                {/* Barra de Progresso Visível apenas se o usuário for um Aluno Matriculado */}
                 {isEnrolled && !isCreator && (
                   <div style={{ marginBottom: '1.5rem', background: 'var(--bg)', padding: '0.8rem', borderRadius: '6px', border: '1px solid var(--border)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px', fontWeight: 'bold' }}>
@@ -240,7 +402,6 @@ export function Dashboard() {
                 )}
 
                 <div style={{ marginTop: 'auto' }}>
-                  {/* Motor Condicional de Botões */}
                   {isCreator ? (
                     <button onClick={() => navigate(`/courses/${course.id}`)} className="counter" style={{ width: '100%', margin: 0 }}>
                       Gerenciar Conteúdo
