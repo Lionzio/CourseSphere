@@ -34,12 +34,15 @@ class QuestionBase(BaseModel):
         default="multiple_choice", description="Tipo da questão (Fechada ou Aberta)"
     )
     weight: float = Field(
-        default=1.0, gt=0.0, description="Peso da questão na nota final"
+        default=1.0, gt=0.0, description="Peso da questão na Nota Final da Prova (NFP)"
     )
 
 
 class QuestionCreate(QuestionBase):
-    options: List[OptionCreate] = Field(default_factory=list)
+    options: List[OptionCreate] = Field(
+        default_factory=list,
+        description="Lista de alternativas (apenas para múltipla escolha)",
+    )
 
     @model_validator(mode="after")
     def validate_options(self) -> "QuestionCreate":
@@ -60,7 +63,7 @@ class QuestionCreate(QuestionBase):
         elif self.question_type == "open":
             if len(self.options) > 0:
                 raise ValueError(
-                    "Questões abertas não devem possuir alternativas cadastradas."
+                    "Questões abertas/discursivas não devem possuir alternativas cadastradas."
                 )
         return self
 
@@ -79,6 +82,11 @@ class QuestionResponse(QuestionBase):
 class QuizBase(BaseModel):
     title: str = Field(
         ..., min_length=3, max_length=255, description="Título do Questionário"
+    )
+    weight: float = Field(
+        default=1.0,
+        gt=0.0,
+        description="Peso da prova para o cálculo da Nota Final da Disciplina (NFD)",
     )
 
 

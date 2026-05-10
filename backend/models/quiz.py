@@ -11,6 +11,9 @@ class Quiz(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False)
 
+    # Peso da prova inteira para o cálculo da Nota Final da Disciplina (NFD)
+    weight = Column(Float, default=1.0, server_default="1.0", nullable=False)
+
     # unique=True garante a regra de negócio: 1 Aula = Máximo de 1 Quiz
     lesson_id = Column(
         Integer,
@@ -42,7 +45,7 @@ class Question(Base):
     # Tipo da questão: 'multiple_choice' (Fechada) ou 'open' (Aberta/Texto)
     question_type = Column(String(50), nullable=False, default="multiple_choice")
 
-    # Peso da questão para cálculo dinâmico de nota final (Overdelivering)
+    # Peso da questão para cálculo dinâmico da Nota Final da Prova (NFP)
     weight = Column(Float, default=1.0, nullable=False)
 
     quiz = relationship("Quiz", back_populates="questions")
