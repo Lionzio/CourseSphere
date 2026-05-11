@@ -86,13 +86,13 @@ A tabela abaixo mapeia cada requisito do edital oficial da V-LAB para a sua impl
 
 ### 🔐 Credenciais de Teste
 
-Para testar a plataforma sem criar uma conta, utilize as credenciais abaixo. Cada conta demonstra um papel diferente do sistema RBAC:
+Para explorar a plataforma imediatamente sem a necessidade de criar um novo cadastro, utilize as contas pré-configuradas abaixo. Cada perfil demonstra um nível de acesso específico do nosso sistema de **Controlo de Acesso Baseado em Papéis (RBAC)**:
 
-| Papel | Email | Password | O que pode fazer |
+| Papel | Email | Senha | Permissões |
 | :--- | :--- | :--- | :--- |
-| **Admin** | `administrador1@gmail.com` | `administrador1` | Acesso total: gerir utilizadores, cursos e painel de administração |
-| **Professor** | `professor1@gmail.com.com` | `professor1` | Criar cursos, aulas, gerar quizzes com IA e avaliar provas |
-| **Estudante** | `aluno1@gmail.com` | `aluno1` | Visualizar cursos, realizar quizzes e acompanhar o seu progresso |
+| **Admin** | `admin@coursesphere.com` | `admin1234` | Acesso total: gerir utilizadores, cursos e painel de administração |
+| **Professor** | `prof@coursesphere.com` | `prof1234` | Criar cursos, aulas, gerar quizzes com IA e avaliar provas |
+| **Estudante** | `student@coursesphere.com` | `student1234` | Visualizar cursos, realizar quizzes e acompanhar o seu progresso |
 
 > 💡 **Dica:** Experimente tentar aceder a `/admin` com a conta de Estudante. O sistema irá bloquear o acesso tanto no frontend (guarda de rota) como no backend (middleware de autorização).
 
