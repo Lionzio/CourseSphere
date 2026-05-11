@@ -41,7 +41,7 @@ interface TeacherAnalytics {
 }
 
 type SortOrder = 'newest' | 'oldest' | 'name';
-type Tab = 'my_courses' | 'catalog' | 'analytics'; // Nova aba adicionada
+type Tab = 'my_courses' | 'catalog' | 'analytics';
 
 const formatDate = (dateString: string) => {
   if (!dateString) return '';
@@ -92,6 +92,7 @@ export function Dashboard() {
   const fetchDashboardData = useCallback(async () => {
     setIsLoading(true);
     try {
+      // 1. Carregamento Crítico (Cursos e Matrículas)
       const [coursesRes, enrollmentsRes] = await Promise.all([
         api.get('/courses/'),
         api.get('/enrollments/my')
@@ -99,24 +100,30 @@ export function Dashboard() {
       setCourses(coursesRes.data);
       setEnrollments(enrollmentsRes.data);
 
-      // Consumo inteligente dos endpoints analíticos baseados no papel (RBAC)
-      if (user?.role === 'student') {
-        const sStats = await api.get('/analytics/student');
-        setStudentStats(sStats.data);
-      } else {
-        const [tStatsRes, sStatsRes] = await Promise.allSettled([
-          api.get('/analytics/teacher'),
-          api.get('/analytics/student') // Traz dados de aluno caso o professor esteja matriculado noutro curso
-        ]);
-        if (tStatsRes.status === 'fulfilled') setTeacherStats(tStatsRes.value.data);
-        if (sStatsRes.status === 'fulfilled') setStudentStats(sStatsRes.value.data);
+      // 2. BUGFIX SPRINT 10: Carregamento Analítico Isolado
+      // Falhas neste bloco não farão disparar o toast vermelho para o utilizador.
+      try {
+        if (user?.role === 'student') {
+          const sStats = await api.get('/analytics/student');
+          setStudentStats(sStats.data);
+        } else {
+          const [tStatsRes, sStatsRes] = await Promise.allSettled([
+            api.get('/analytics/teacher'),
+            api.get('/analytics/student') // Traz dados do aluno caso o professor estude noutro curso
+          ]);
+          if (tStatsRes.status === 'fulfilled') setTeacherStats(tStatsRes.value.data);
+          if (sStatsRes.status === 'fulfilled') setStudentStats(sStatsRes.value.data);
+        }
+      } catch (analyticsError) {
+        console.warn('Métricas analíticas indísponíveis ou acesso negado:', analyticsError);
       }
+
     } catch {
       toast.error('Erro ao carregar dados do painel.');
     } finally {
       setIsLoading(false);
     }
-  }, [user]); // <-- BUGFIX: Passando o objeto 'user' inteiro para preservar a memoização do React Compiler
+  }, [user]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -330,7 +337,7 @@ export function Dashboard() {
                   </ResponsiveContainer>
                 </div>
               ) : (
-                 <p style={{ color: 'var(--text)', fontStyle: 'italic', background: 'var(--code-bg)', padding: '1.5rem', borderRadius: '8px', border: '1px dashed var(--border)' }}>
+                <p style={{ color: 'var(--text)', fontStyle: 'italic', background: 'var(--code-bg)', padding: '1.5rem', borderRadius: '8px', border: '1px dashed var(--border)' }}>
                   Complete avaliações e aguarde a correção para acompanhar o seu gráfico de evolução.
                 </p>
               )}

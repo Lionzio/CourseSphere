@@ -74,7 +74,7 @@ export function AdminPanel() {
 
   useEffect(() => {
     if (isAdmin) {
-      // BUGFIX: Ignorando falso positivo do linter para chamadas assíncronas seguras
+      // BUGFIX SPRINT 10: Supressão exata para evitar falhas em CI/CD na atualização de estado
       // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchAdminData();
     }

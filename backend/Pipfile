@@ -26,6 +26,7 @@ flake8 = "*"
 pytest = "*"
 httpx = "*"
 pytest-asyncio = "*"
+aiosqlite = "*"
 
 [requires]
 python_version = "3.11"

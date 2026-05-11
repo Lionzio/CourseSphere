@@ -2,7 +2,8 @@
 from typing import cast
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func
+from sqlalchemy import func, case
+from sqlalchemy.orm import selectinload
 
 from models.user import User
 from models.course import Course
@@ -22,13 +23,23 @@ from schemas.analytics import (
 async def get_student_analytics(db: AsyncSession, user_id: int) -> StudentAnalytics:
     """Calcula as métricas de desempenho para o dashboard do Aluno."""
 
-    # 1. Média de conclusão dos cursos
-    avg_comp_result = await db.execute(
-        select(func.avg(Enrollment.completion_percentage)).where(
-            Enrollment.user_id == user_id
+    # 1. BUGFIX SPRINT 10: Calcula a média em memória com eager loading (selectinload)
+    # Evita AttributeError ao tentar usar func.avg() numa @property do Python
+    enrollments_result = await db.execute(
+        select(Enrollment)
+        .options(
+            selectinload(Enrollment.course).selectinload(Course.lessons),
+            selectinload(Enrollment.progresses),
         )
+        .where(Enrollment.user_id == user_id)
     )
-    avg_completion = avg_comp_result.scalar() or 0.0
+    enrollments = enrollments_result.scalars().all()
+
+    if enrollments:
+        total_pct = sum(e.completion_percentage for e in enrollments)
+        avg_completion = total_pct / len(enrollments)
+    else:
+        avg_completion = 0.0
 
     # 2. Contagem de avaliações (Corrigidas vs Pendentes)
     status_counts_result = await db.execute(
@@ -135,14 +146,11 @@ async def get_admin_analytics(db: AsyncSession) -> AdminAnalytics:
     ).scalar() or 0
 
     # 2. Taxa de Sucesso vs Reprovação
+    # BUGFIX: Utilização de `case` garante compatibilidade entre PostgreSQL e SQLite
     attempts_result = await db.execute(
         select(
             func.count(QuizAttempt.id).label("total"),
-            func.sum(
-                func.cast(
-                    QuizAttempt.score >= 70, func.Integer()
-                )  # PostgreSQL/SQLite safe
-            ).label("passed"),
+            func.sum(case((QuizAttempt.score >= 70, 1), else_=0)).label("passed"),
         ).where(QuizAttempt.status == "graded")
     )
     row = attempts_result.one()

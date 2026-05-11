@@ -13,7 +13,7 @@ import type {
 
 interface GradeQuizModalProps {
   lessonId: number;
-  quizId: number; // SPRINT 8: Nova prop para suportar a arquitetura 1:N
+  quizId: number;
   onClose: () => void;
 }
 
@@ -21,10 +21,9 @@ interface GradeQuizModalProps {
 // TIPOS LOCAIS
 // ==========================================
 
-/** Estado editável para as notas que o professor está preenchendo */
 interface GradingState {
   [questionId: number]: {
-    manual_score: string; // string para o input controlado
+    manual_score: string;
     teacher_feedback: string;
   };
 }
@@ -77,7 +76,6 @@ function AttemptCard({
       overflow: 'hidden',
       background: 'var(--bg)',
     }}>
-      {/* Header clicável do card */}
       <button
         onClick={onToggle}
         style={{
@@ -119,11 +117,18 @@ function AttemptCard({
         </div>
       </button>
 
-      {/* Corpo expansível */}
+      {/* Corpo expansível com UX refinada (Scrollbar isolado) */}
       {isExpanded && (
-        <div style={{ padding: '1.2rem', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-
-          {/* Todas as respostas do aluno */}
+        <div style={{ 
+          padding: '1.2rem', 
+          borderTop: '1px solid var(--border)', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: '1.2rem',
+          maxHeight: '55vh', // SPRINT 10 BUGFIX: Limite de altura 
+          overflowY: 'auto', // SPRINT 10 BUGFIX: Scroll isolado dentro do card
+          paddingRight: '0.8rem' // Previne sobreposição do scrollbar nativo 
+        }}>
           {attempt.answers.map((ans: StudentAnswerResponse, idx: number) => {
             const question = questionMap[ans.question_id];
             if (!question) return null;
@@ -137,7 +142,6 @@ function AttemptCard({
                 background: 'var(--code-bg)', borderRadius: '6px',
                 padding: '1rem', border: '1px solid var(--border)',
               }}>
-                {/* Enunciado */}
                 <div style={{ display: 'flex', gap: '0.8rem', marginBottom: '0.8rem', alignItems: 'flex-start' }}>
                   <span style={{
                     background: 'var(--accent)', color: 'white', padding: '2px 7px',
@@ -155,7 +159,6 @@ function AttemptCard({
                   </div>
                 </div>
 
-                {/* Resposta do aluno */}
                 <div style={{ marginBottom: '0.8rem', paddingLeft: '1.8rem' }}>
                   {isOpen ? (
                     <div style={{
@@ -173,7 +176,6 @@ function AttemptCard({
                   )}
                 </div>
 
-                {/* Painel de correção manual — apenas para questões abertas e tentativas pendentes */}
                 {isOpen && isPending && (
                   <div style={{ paddingLeft: '1.8rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                     <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
@@ -201,7 +203,7 @@ function AttemptCard({
                           type="text"
                           value={gradingState[ans.question_id]?.teacher_feedback ?? ''}
                           onChange={(e) => onGradeChange(ans.question_id, 'teacher_feedback', e.target.value)}
-                          placeholder="Ex: Boa resposta, mas faltou aprofundar..."
+                          placeholder="Ex: Boa resposta..."
                           className="counter"
                           style={{ width: '100%', margin: 0, padding: '0.5rem', fontSize: '14px', boxSizing: 'border-box' }}
                         />
@@ -210,7 +212,6 @@ function AttemptCard({
                   </div>
                 )}
 
-                {/* Exibe nota e feedback já atribuídos (tentativa já corrigida) */}
                 {isOpen && isGraded && ans.manual_score !== null && (
                   <div style={{ paddingLeft: '1.8rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                     <div style={{ fontSize: '13px', color: '#2e7d32', fontWeight: 'bold' }}>
@@ -231,7 +232,6 @@ function AttemptCard({
             );
           })}
 
-          {/* Botão de submissão — apenas para tentativas pendentes */}
           {isPending && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px dashed var(--border)' }}>
               <button
@@ -264,12 +264,10 @@ export function GradeQuizModal({ lessonId, quizId, onClose }: GradeQuizModalProp
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [expandedAttemptId, setExpandedAttemptId] = useState<number | null>(null);
-  // gradingStates: um estado de notas separado por tentativa
   const [gradingStates, setGradingStates] = useState<Record<number, GradingState>>({});
 
   const fetchData = useCallback(async () => {
     try {
-      // SPRINT 8: Busca a lista de quizzes e encontra o quiz específico e as suas tentativas
       const [quizListRes, attemptsRes] = await Promise.all([
         api.get(`/lessons/${lessonId}/quizzes`),
         api.get(`/lessons/${lessonId}/quizzes/${quizId}/attempts`),
@@ -289,7 +287,6 @@ export function GradeQuizModal({ lessonId, quizId, onClose }: GradeQuizModalProp
       setQuiz(fetchedQuiz);
       setAttempts(fetchedAttempts);
 
-      // Pré-popula as notas já existentes para tentativas pendentes
       const initialStates: Record<number, GradingState> = {};
       for (const attempt of fetchedAttempts) {
         if (attempt.status === 'pending_correction') {
@@ -308,7 +305,6 @@ export function GradeQuizModal({ lessonId, quizId, onClose }: GradeQuizModalProp
       }
       setGradingStates(initialStates);
 
-      // Auto-expande a primeira tentativa pendente
       const firstPending = fetchedAttempts.find(a => a.status === 'pending_correction');
       if (firstPending) setExpandedAttemptId(firstPending.id);
 
@@ -352,7 +348,6 @@ export function GradeQuizModal({ lessonId, quizId, onClose }: GradeQuizModalProp
 
     const state = gradingStates[attemptId] ?? {};
 
-    // Valida se todos os campos de nota foram preenchidos
     const openQuestionIds = Object.keys(state).map(Number);
     for (const qId of openQuestionIds) {
       const score = state[qId]?.manual_score;
@@ -382,7 +377,6 @@ export function GradeQuizModal({ lessonId, quizId, onClose }: GradeQuizModalProp
         payload,
       );
       toast.success('Correção enviada com sucesso!', { icon: '✔' });
-      // Recarrega as tentativas para refletir o novo status
       await fetchData();
       setExpandedAttemptId(null);
     } catch (error) {
@@ -396,13 +390,8 @@ export function GradeQuizModal({ lessonId, quizId, onClose }: GradeQuizModalProp
     }
   };
 
-  // ── CONTADORES PARA O HEADER ──────────────────────────────────────────────
   const pendingCount = attempts.filter(a => a.status === 'pending_correction').length;
   const gradedCount = attempts.filter(a => a.status === 'graded').length;
-
-  // ==========================================
-  // RENDER
-  // ==========================================
 
   return (
     <div style={{
@@ -416,8 +405,6 @@ export function GradeQuizModal({ lessonId, quizId, onClose }: GradeQuizModalProp
         border: '1px solid var(--border)', boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
         maxHeight: '92vh', display: 'flex', flexDirection: 'column',
       }}>
-
-        {/* ── HEADER ── */}
         <div style={{
           padding: '1.5rem 2rem', borderBottom: '1px solid var(--border)',
           display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem',
@@ -431,7 +418,6 @@ export function GradeQuizModal({ lessonId, quizId, onClose }: GradeQuizModalProp
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
-            {/* Badges de contagem */}
             {!isLoading && (
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 {pendingCount > 0 && (
@@ -450,9 +436,7 @@ export function GradeQuizModal({ lessonId, quizId, onClose }: GradeQuizModalProp
           </div>
         </div>
 
-        {/* ── CORPO ── */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-
           {isLoading ? (
             <p style={{ textAlign: 'center', color: 'var(--text)', padding: '2rem' }}>
               Carregando tentativas...
@@ -466,11 +450,9 @@ export function GradeQuizModal({ lessonId, quizId, onClose }: GradeQuizModalProp
             </div>
           ) : (
             <>
-              {/* Pendentes primeiro */}
               {attempts
                 .slice()
                 .sort((a, b) => {
-                  // pending_correction → graded → in_progress
                   const order = { pending_correction: 0, graded: 1, in_progress: 2 };
                   return (order[a.status] ?? 9) - (order[b.status] ?? 9);
                 })
@@ -494,7 +476,6 @@ export function GradeQuizModal({ lessonId, quizId, onClose }: GradeQuizModalProp
           )}
         </div>
 
-        {/* ── FOOTER ── */}
         <div style={{ padding: '1rem 2rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
           <button onClick={onClose} className="counter"
             style={{ margin: 0, background: 'transparent', border: '1px solid var(--border)' }}>
