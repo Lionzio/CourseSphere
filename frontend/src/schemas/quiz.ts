@@ -6,18 +6,17 @@ import { z } from 'zod';
 // ==========================================
 
 const optionSchema = z.object({
-  // O min() foi removido daqui para ser validado condicionalmente no superRefine
   text: z.string(),
   is_correct: z.boolean(),
 });
 
 const questionSchema = z.object({
-  text: z.string().min(3, 'A questão deve ter no mínimo 3 caracteres'),
+  text: z.string().min(5, 'A questão deve ter no mínimo 5 caracteres'),
   question_type: z.enum(['multiple_choice', 'open']),
   weight: z.number().min(0.1, 'O peso mínimo é 0.1').max(100, 'O peso máximo é 100'),
-  options: z.array(optionSchema),
+  options: z.array(optionSchema), // <-- Removido o .optional() e o .default([])
 }).superRefine((data, ctx) => {
-  // BUGFIX SPRINT 8: Validação Condicional. Só cobra regras de alternativas se for múltipla escolha.
+  // Validação Condicional. Só cobra regras de alternativas se for múltipla escolha.
   if (data.question_type === 'multiple_choice') {
     if (data.options.length < 2) {
       ctx.addIssue({
@@ -85,6 +84,7 @@ export interface QuizResponse {
   id: number;
   lesson_id: number;
   title: string;
+  weight: number;
   questions: QuestionResponse[];
 }
 
@@ -94,22 +94,17 @@ export interface StudentAnswerResponse {
   question_id: number;
   selected_option_id: number | null;
   text_answer: string | null;
-  /** null = múltipla escolha errada, true/false = auto-corrigida, null em questões abertas */
   is_correct: boolean | null;
-  /** Nota de 0–100 atribuída pelo professor em questões abertas */
   manual_score: number | null;
-  /** Comentário/justificativa do professor */
   teacher_feedback: string | null;
 }
 
-/** Status da máquina de estados da tentativa */
 export type AttemptStatus = 'in_progress' | 'pending_correction' | 'graded';
 
 export interface QuizAttemptResponse {
   id: number;
   user_id: number;
   quiz_id: number;
-  /** null enquanto pendente de correção manual */
   score: number | null;
   status: AttemptStatus;
   started_at: string;
@@ -117,7 +112,6 @@ export interface QuizAttemptResponse {
   answers: StudentAnswerResponse[];
 }
 
-/** Payload de correção manual enviado pelo professor */
 export interface QuizGradeUpdateItem {
   question_id: number;
   manual_score: number;

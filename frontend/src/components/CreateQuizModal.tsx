@@ -39,9 +39,14 @@ function QuestionItem({
     fields: optionFields,
     append: appendOption,
     remove: removeOption,
-  } = useFieldArray({ control, name: `questions.${index}.options` });
+  } = useFieldArray({
+    control,
+    name: `questions.${index}.options` as const,
+    // BUGFIX: Impede que o React Hook Form destrua o array 'options' quando a interface é escondida!
+    shouldUnregister: false,
+  });
 
-  const questionType = watch(`questions.${index}.question_type`);
+  const questionType = watch(`questions.${index}.question_type` as const);
   const questionErrors = errors.questions?.[index];
 
   return (
@@ -54,7 +59,6 @@ function QuestionItem({
         position: 'relative',
       }}
     >
-      {/* Header da Questão */}
       <div
         style={{
           display: 'flex',
@@ -80,11 +84,10 @@ function QuestionItem({
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {/* Enunciado */}
         <div>
           <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Enunciado</label>
           <textarea
-            {...register(`questions.${index}.text`)}
+            {...register(`questions.${index}.text` as const)}
             className="counter"
             style={{
               width: '100%',
@@ -102,11 +105,10 @@ function QuestionItem({
         </div>
 
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          {/* Tipo de Questão */}
           <div style={{ flex: '1 1 200px' }}>
             <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Tipo</label>
             <select
-              {...register(`questions.${index}.question_type`)}
+              {...register(`questions.${index}.question_type` as const)}
               className="counter"
               style={{
                 width: '100%',
@@ -120,13 +122,12 @@ function QuestionItem({
             </select>
           </div>
 
-          {/* Peso */}
           <div style={{ flex: '1 1 100px' }}>
             <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Peso (Nota)</label>
             <input
               type="number"
               step="0.1"
-              {...register(`questions.${index}.weight`, { valueAsNumber: true })}
+              {...register(`questions.${index}.weight` as const, { valueAsNumber: true })}
               className="counter"
               style={{ width: '100%', margin: '0.3rem 0 0' }}
             />
@@ -138,7 +139,6 @@ function QuestionItem({
           </div>
         </div>
 
-        {/* Gerenciador de Alternativas — apenas para Múltipla Escolha */}
         {questionType === 'multiple_choice' && (
           <div
             style={{
@@ -175,7 +175,6 @@ function QuestionItem({
               </button>
             </div>
 
-            {/* Erro global do array de opções */}
             {questionErrors?.options?.root && (
               <div
                 style={{
@@ -197,13 +196,13 @@ function QuestionItem({
                   <input
                     type="checkbox"
                     {...register(
-                      `questions.${index}.options.${optIndex}.is_correct`
+                      `questions.${index}.options.${optIndex}.is_correct` as const
                     )}
                     title="Marcar como alternativa correta"
                     style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                   />
                   <input
-                    {...register(`questions.${index}.options.${optIndex}.text`)}
+                    {...register(`questions.${index}.options.${optIndex}.text` as const)}
                     className="counter"
                     placeholder="Texto da alternativa..."
                     style={{ margin: 0, flex: 1, padding: '0.4rem' }}
@@ -278,7 +277,6 @@ export function CreateQuizModal({
     },
   });
 
-  // 1º useFieldArray: gerencia o array de QUESTÕES
   const {
     fields: questionFields,
     append: appendQuestion,
@@ -286,10 +284,9 @@ export function CreateQuizModal({
     replace: replaceQuestions,
   } = useFieldArray({ control, name: 'questions' });
 
-  // ── Submissão manual e Limpeza Pydantic ──────────────────────────────────
   const onSubmit = async (data: QuizFormValues) => {
     try {
-      // BUGFIX: Limpa ativamente opções de questões abertas para evitar erros Pydantic de min_length
+      // Limpeza sanitária para o backend (o array 'options' existirá e passará no Zod)
       const sanitizedData: QuizFormValues = {
         ...data,
         questions: data.questions.map((q) => {
@@ -313,7 +310,6 @@ export function CreateQuizModal({
     }
   };
 
-  // ── Auto-geração via IA ───────────────────────────────────────────────────
   const handleAIGenerate = async () => {
     setIsGeneratingAI(true);
     try {
@@ -359,19 +355,14 @@ export function CreateQuizModal({
           );
         }
       } else {
-        toast.error('Erro inesperado na geração de questões pela IA.');
+        toast.error('Erro inesperado na generation de questões pela IA.');
       }
     } finally {
       setIsGeneratingAI(false);
     }
   };
 
-  // ── Flags de bloqueio de UI ───────────────────────────────────────────────
   const isBusy = isSubmitting || isGeneratingAI;
-
-  // ==========================================
-  // RENDER
-  // ==========================================
 
   return (
     <div
@@ -403,7 +394,6 @@ export function CreateQuizModal({
           flexDirection: 'column',
         }}
       >
-        {/* ── HEADER ── */}
         <div
           style={{
             display: 'flex',
@@ -440,7 +430,6 @@ export function CreateQuizModal({
           </button>
         </div>
 
-        {/* ── BANNER DO AI QUIZ BUILDER ── */}
         <div
           style={{
             marginBottom: '1.5rem',
@@ -511,7 +500,6 @@ export function CreateQuizModal({
           </button>
         </div>
 
-        {/* ── FORMULÁRIO ── */}
         <form
           onSubmit={handleSubmit(onSubmit)}
           style={{
@@ -523,7 +511,6 @@ export function CreateQuizModal({
             flex: 1,
           }}
         >
-          {/* Campo: Título */}
           <div>
             <label
               style={{
@@ -548,7 +535,6 @@ export function CreateQuizModal({
             )}
           </div>
 
-          {/* Seção: Questões */}
           <div
             style={{
               borderTop: '1px solid var(--border)',
@@ -643,7 +629,6 @@ export function CreateQuizModal({
             )}
           </div>
 
-          {/* Footer sticky */}
           <div
             style={{
               display: 'flex',
@@ -691,7 +676,6 @@ export function CreateQuizModal({
         </form>
       </div>
 
-      {/* Keyframe global */}
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
