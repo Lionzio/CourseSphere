@@ -185,7 +185,9 @@ export function AdminPanel() {
                       ))}
                     </Pie>
                     <Tooltip 
-                      formatter={(value: number) => [`${value}%`, '']}
+                      /* BUGFIX SPRINT 11: Tipagem any para contornar a assinatura restrita do Recharts 3.x */
+                      /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+                      formatter={(value: any) => [`${value}%`, ''] as any}
                       contentStyle={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text-h)', borderRadius: '8px' }} 
                     />
                     <Legend verticalAlign="bottom" height={36} />

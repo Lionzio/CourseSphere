@@ -1,18 +1,73 @@
-version: '3.8'
-
+# docker-compose.yml
 services:
+  # ----------------------------------------
+  # 1. BASE DE DADOS (PostgreSQL)
+  # ----------------------------------------
   db:
     image: postgres:17-alpine
     container_name: coursesphere_db
-    restart: always
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password123
       POSTGRES_DB: coursesphere
     ports:
-      - "5433:5432"
+      - "5433:5432" # Mantém a porta 5433 no hospedeiro para não conflitar com instalações locais
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d coursesphere"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # ----------------------------------------
+  # 2. BACKEND (FastAPI API)
+  # ----------------------------------------
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: coursesphere_api
+    restart: unless-stopped
+    environment:
+      # Força a API a conectar ao container 'db' na porta interna 5432
+      - DATABASE_URL=postgresql+asyncpg://postgres:password123@db:5432/coursesphere
+      - SECRET_KEY=minha_chave_super_secreta_jwt
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=1440
+      # As chaves de IA devem ser passadas do seu ambiente hospedeiro
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-""}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy # Só inicia após o Healthcheck do DB passar
+    healthcheck:
+      # Usa o Python nativo para verificar se a API está a responder na raiz
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ----------------------------------------
+  # 3. FRONTEND (React + Nginx)
+  # ----------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: coursesphere_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80" # Mapeia a porta 80 do Nginx para a sua porta 5173 habitual
+    depends_on:
+      api:
+        condition: service_healthy # Só inicia após o Healthcheck da API passar
+
+# ----------------------------------------
+# VOLUMES NOMEADOS
+# ----------------------------------------
 volumes:
   postgres_data:
+    name: coursesphere_pg_data
