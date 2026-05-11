@@ -234,10 +234,11 @@ jobs:
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
         working-directory: ./frontend
 
-      # --- INJEÇÃO DIRETA NA MEMÓRIA ---
+      # --- INJEÇÃO DIRETA VIA GITHUB ACTIONS ---
       - name: Build de Produção (Vercel)
-        # A flag --build-env injeta a variável DIRETAMENTE no motor da Vercel, não tem como falhar!
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }} --build-env VITE_API_URL="https://lionzio-coursesphere.onrender.com"
+        env:
+          VITE_API_URL: "https://lionzio-coursesphere.onrender.com"
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
         working-directory: ./frontend
 
       - name: Deploy para Produção (Vercel)
