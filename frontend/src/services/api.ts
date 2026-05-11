@@ -1,8 +1,13 @@
+// frontend/src/services/api.ts
 import axios from 'axios';
 import { useAuthStore } from '../stores/auth';
 
+// O Vite injeta o VITE_API_URL que configuramos no painel da Vercel.
+// Se a variável não existir (desenvolvimento local), ele faz o fallback para o 127.0.0.1.
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
 const api = axios.create({
-  baseURL: 'http://127.0.0.1:8000/api/v1',
+  baseURL: `${API_BASE_URL}/api/v1`,
 });
 
 api.interceptors.request.use((config) => {

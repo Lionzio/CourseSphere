@@ -137,6 +137,7 @@ botão **Authorize** com credenciais válidas para injetar automaticamente o tok
 )
 
 # BUGFIX: Utilização de Regex para permitir qualquer porta no localhost/127.0.0.1.
+# Adicionada também a origem de produção da Vercel para permitir o fluxo de auth.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -144,6 +145,7 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost",
         "http://127.0.0.1",
+        "https://lionzio-coursesphere.vercel.app",
     ],
     allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$",
     allow_credentials=True,
