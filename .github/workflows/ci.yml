@@ -234,14 +234,10 @@ jobs:
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
         working-directory: ./frontend
 
-      # --- SOLUÇÃO À PROVA DE BALAS ---
-      # Cria um ficheiro .env.production no momento do build para o Vite consumir
-      - name: Injetar Variável de Produção
-        run: echo "VITE_API_URL=https://lionzio-coursesphere.onrender.com" > .env.production
-        working-directory: ./frontend
-
+      # --- INJEÇÃO DIRETA NA MEMÓRIA ---
       - name: Build de Produção (Vercel)
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        # A flag --build-env injeta a variável DIRETAMENTE no motor da Vercel, não tem como falhar!
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }} --build-env VITE_API_URL="https://lionzio-coursesphere.onrender.com"
         working-directory: ./frontend
 
       - name: Deploy para Produção (Vercel)
