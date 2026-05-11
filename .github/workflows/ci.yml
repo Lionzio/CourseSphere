@@ -203,7 +203,6 @@ jobs:
 
   # ============================================================
   # FASE 3B: DEPLOY — Frontend (Vercel)
-  # Condicional: apenas em push para main, após lint + testes passarem
   # ============================================================
   deploy-frontend:
     name: "🚀 Deploy Frontend → Vercel"
@@ -213,6 +212,11 @@ jobs:
     environment:
       name: production
       url: ${{ vars.VERCEL_PRODUCTION_URL }}
+    
+    # Injeção das credenciais do projeto Vercel
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
     steps:
       - name: Checkout do Código

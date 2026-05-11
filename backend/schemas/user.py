@@ -1,3 +1,4 @@
+# backend/schemas/user.py
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from models.user import Role
 
@@ -13,6 +14,16 @@ class UserCreate(BaseModel):
         ..., min_length=6, description="Senha com no mínimo 6 caracteres"
     )
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "Ada Lovelace",
+                "email": "ada.lovelace@coursesphere.com",
+                "password": "SenhaSuperSegura123!",
+            }
+        }
+    )
+
 
 class UserResponse(BaseModel):
     """Schema para retornar dados do usuário sem expor informações sensíveis (senha)."""
@@ -24,7 +35,17 @@ class UserResponse(BaseModel):
         ..., description="Papel/Nível de acesso do usuário no sistema (RBAC)"
     )
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": 1,
+                "name": "Ada Lovelace",
+                "email": "ada.lovelace@coursesphere.com",
+                "role": "student",
+            }
+        },
+    )
 
 
 class Token(BaseModel):
@@ -32,3 +53,12 @@ class Token(BaseModel):
 
     access_token: str = Field(..., description="Token JWT codificado")
     token_type: str = Field(..., description="Tipo do token (ex: bearer)")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxI...",
+                "token_type": "bearer",
+            }
+        }
+    )

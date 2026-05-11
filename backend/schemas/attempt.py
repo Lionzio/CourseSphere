@@ -1,3 +1,4 @@
+# backend/schemas/attempt.py
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict, model_validator
@@ -18,6 +19,16 @@ class StudentAnswerCreate(BaseModel):
         None, description="Texto da resposta (se for questão aberta)"
     )
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "question_id": 50,
+                "selected_option_id": 100,
+                "text_answer": None,
+            }
+        }
+    )
+
 
 class StudentAnswerResponse(BaseModel):
     """Como a resposta é devolvida (incluindo correção automática e manual)."""
@@ -30,7 +41,20 @@ class StudentAnswerResponse(BaseModel):
     manual_score: Optional[float] = None
     teacher_feedback: Optional[str] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": 200,
+                "question_id": 50,
+                "selected_option_id": 100,
+                "text_answer": None,
+                "is_correct": True,
+                "manual_score": 100.0,
+                "teacher_feedback": "Excelente!",
+            }
+        },
+    )
 
 
 # ==========================================
@@ -40,6 +64,25 @@ class QuizAttemptCreate(BaseModel):
     """Payload enviado pelo frontend quando o aluno finaliza a prova."""
 
     answers: List[StudentAnswerCreate]
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "answers": [
+                    {
+                        "question_id": 50,
+                        "selected_option_id": 100,
+                        "text_answer": None,
+                    },
+                    {
+                        "question_id": 51,
+                        "selected_option_id": None,
+                        "text_answer": "A IA generativa cria novos dados.",
+                    },
+                ]
+            }
+        }
+    )
 
 
 class QuizAttemptResponse(BaseModel):
@@ -54,7 +97,21 @@ class QuizAttemptResponse(BaseModel):
     completed_at: Optional[datetime] = None
     answers: List[StudentAnswerResponse] = []
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": 10,
+                "user_id": 42,
+                "quiz_id": 5,
+                "score": 85.5,
+                "status": "graded",
+                "started_at": "2026-05-11T10:00:00Z",
+                "completed_at": "2026-05-11T10:45:00Z",
+                "answers": [],
+            }
+        },
+    )
 
 
 # ==========================================
@@ -71,6 +128,16 @@ class AnswerGradeUpdate(BaseModel):
         None, description="Justificativa ou sugestão de melhoria"
     )
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "question_id": 51,
+                "manual_score": 80.0,
+                "teacher_feedback": "Boa resposta, mas faltou mencionar redes neurais.",
+            }
+        }
+    )
+
     @model_validator(mode="after")
     def validate_feedback(self) -> "AnswerGradeUpdate":
         """
@@ -80,7 +147,8 @@ class AnswerGradeUpdate(BaseModel):
         if self.manual_score < 100:
             if not self.teacher_feedback or not self.teacher_feedback.strip():
                 raise ValueError(
-                    "O feedback (justificativa/sugestões) é obrigatório para notas menores que 100."
+                    "O feedback (justificativa/sugestões) é obrigatório para "
+                    "notas menores que 100."
                 )
         return self
 
@@ -90,4 +158,18 @@ class QuizGradeUpdate(BaseModel):
 
     grades: List[AnswerGradeUpdate] = Field(
         ..., description="Lista de notas manuais atribuídas"
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "grades": [
+                    {
+                        "question_id": 51,
+                        "manual_score": 80.0,
+                        "teacher_feedback": "Boa resposta, mas faltou aprofundar.",
+                    }
+                ]
+            }
+        }
     )

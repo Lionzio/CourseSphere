@@ -1,3 +1,4 @@
+# backend/schemas/quiz.py
 from typing import List, Literal
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
@@ -15,14 +16,31 @@ class OptionBase(BaseModel):
 
 
 class OptionCreate(OptionBase):
-    pass
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "text": "Paris",
+                "is_correct": True,
+            }
+        }
+    )
 
 
 class OptionResponse(OptionBase):
     id: int
     question_id: int
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": 100,
+                "question_id": 50,
+                "text": "Paris",
+                "is_correct": True,
+            }
+        },
+    )
 
 
 # ==========================================
@@ -44,6 +62,20 @@ class QuestionCreate(QuestionBase):
         description="Lista de alternativas (apenas para múltipla escolha)",
     )
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "text": "Qual é a capital da França?",
+                "question_type": "multiple_choice",
+                "weight": 1.5,
+                "options": [
+                    {"text": "Londres", "is_correct": False},
+                    {"text": "Paris", "is_correct": True},
+                ],
+            }
+        }
+    )
+
     @model_validator(mode="after")
     def validate_options(self) -> "QuestionCreate":
         """
@@ -62,7 +94,7 @@ class QuestionCreate(QuestionBase):
                     "marcada como correta."
                 )
         elif self.question_type == "open":
-            # Sanitizing: Garante que questões abertas nunca salvam alternativas fantasmas
+            # Sanitizing: Garante que questões abertas nunca salvam opções fantasmas
             self.options = []
 
         return self
@@ -73,7 +105,32 @@ class QuestionResponse(QuestionBase):
     quiz_id: int
     options: List[OptionResponse] = []
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": 50,
+                "quiz_id": 5,
+                "text": "Qual é a capital da França?",
+                "question_type": "multiple_choice",
+                "weight": 1.5,
+                "options": [
+                    {
+                        "id": 99,
+                        "question_id": 50,
+                        "text": "Londres",
+                        "is_correct": False,
+                    },
+                    {
+                        "id": 100,
+                        "question_id": 50,
+                        "text": "Paris",
+                        "is_correct": True,
+                    },
+                ],
+            }
+        },
+    )
 
 
 # ==========================================
@@ -98,10 +155,57 @@ class QuizCreate(QuizBase):
 
     questions: List[QuestionCreate] = Field(default_factory=list)
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "title": "Avaliação de Geografia - Europa",
+                "weight": 2.0,
+                "questions": [
+                    {
+                        "text": "Qual é a capital da França?",
+                        "question_type": "multiple_choice",
+                        "weight": 1.0,
+                        "options": [
+                            {"text": "Berlim", "is_correct": False},
+                            {"text": "Paris", "is_correct": True},
+                        ],
+                    }
+                ],
+            }
+        }
+    )
+
 
 class QuizResponse(QuizBase):
     id: int
     lesson_id: int
     questions: List[QuestionResponse] = []
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": 5,
+                "lesson_id": 12,
+                "title": "Avaliação de Geografia - Europa",
+                "weight": 2.0,
+                "questions": [
+                    {
+                        "id": 50,
+                        "quiz_id": 5,
+                        "text": "Qual é a capital da França?",
+                        "question_type": "multiple_choice",
+                        "weight": 1.0,
+                        "options": [
+                            {
+                                "id": 100,
+                                "question_id": 50,
+                                "text": "Paris",
+                                "is_correct": True,
+                            }
+                        ],
+                    }
+                ],
+            }
+        },
+    )

@@ -1,6 +1,6 @@
 # backend/schemas/ai_quiz.py
 from typing import List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class AIOptionSchema(BaseModel):
@@ -8,6 +8,15 @@ class AIOptionSchema(BaseModel):
 
     text: str = Field(..., description="Texto completo da alternativa.")
     is_correct: bool = Field(..., description="True apenas para a alternativa correta.")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "text": "O protocolo HTTP é stateless (sem estado).",
+                "is_correct": True,
+            }
+        }
+    )
 
 
 class AIQuestionSchema(BaseModel):
@@ -29,6 +38,26 @@ class AIQuestionSchema(BaseModel):
         ),
     )
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "text": "Qual a principal vantagem da injeção de dependências no FastAPI?",
+                "question_type": "multiple_choice",
+                "weight": 2.0,
+                "options": [
+                    {
+                        "text": "Acoplamento forte entre componentes.",
+                        "is_correct": False,
+                    },
+                    {
+                        "text": "Modularidade e facilidade para testes automatizados.",
+                        "is_correct": True,
+                    },
+                ],
+            }
+        }
+    )
+
 
 class AIQuizSchema(BaseModel):
     """
@@ -39,4 +68,23 @@ class AIQuizSchema(BaseModel):
     title: str = Field(..., description="Título descritivo da avaliação.")
     questions: List[AIQuestionSchema] = Field(
         ..., description="Lista de questões geradas para a avaliação."
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "title": "Avaliação Dinâmica: Arquitetura de Software",
+                "questions": [
+                    {
+                        "text": "O que caracteriza uma API RESTful?",
+                        "question_type": "multiple_choice",
+                        "weight": 1.5,
+                        "options": [
+                            {"text": "Uso obrigatório de SOAP", "is_correct": False},
+                            {"text": "Comunicação stateless", "is_correct": True},
+                        ],
+                    }
+                ],
+            }
+        }
     )

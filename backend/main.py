@@ -33,26 +33,110 @@ async def lifespan(app: FastAPI):
     yield  # A API fica a correr a partir daqui
 
 
-# Inicialização da aplicação com o lifespan acoplado
+# ==========================================
+# METADADOS PARA O SWAGGER / REDOC
+# ==========================================
+tags_metadata = [
+    {
+        "name": "Autenticação & Contas",
+        "description": (
+            "Operações de registo e login com **OAuth2PasswordBearer**. "
+            "Retorna tokens JWT estritamente validados."
+        ),
+    },
+    {
+        "name": "Painel de Administração (RBAC)",
+        "description": (
+            "Rotas estritas para gestão de utilizadores e observabilidade global. "
+            "Requer permissão `admin`."
+        ),
+    },
+    {
+        "name": "Gestão de Cursos",
+        "description": (
+            "CRUD completo para cursos. Professores gerem o seu próprio conteúdo; "
+            "estudantes exploram e consomem o catálogo."
+        ),
+    },
+    {
+        "name": "Gestão de Aulas (Lessons)",
+        "description": (
+            "Estruturação hierárquica de aulas, suportando anexos de vídeo e "
+            "processamento de conteúdos textuais profundos."
+        ),
+    },
+    {
+        "name": "Matrículas & Progresso",
+        "description": (
+            "Gestão de inscrições de estudantes em cursos e rastreio analítico "
+            "de progresso individual em cada aula."
+        ),
+    },
+    {
+        "name": "Gestão de Materiais de Apoio",
+        "description": "Registo e gestão de anexos, PDFs, documentações e links complementares.",
+    },
+    {
+        "name": "Motor de Avaliações",
+        "description": (
+            "Criação inteligente de avaliações geradas por IA (Groq/Gemini), "
+            "submissão de respostas e cálculo determinístico."
+        ),
+    },
+    {
+        "name": "Analytics",
+        "description": (
+            "Extração de métricas de desempenho para alimentar os painéis visuais "
+            "de estudantes e professores."
+        ),
+    },
+    {
+        "name": "Healthcheck",
+        "description": (
+            "Verificação automatizada de disponibilidade do serviço na nuvem "
+            "(utilizado pelos monitores do Render)."
+        ),
+    },
+]
+
+# Inicialização da aplicação com o lifespan acoplado e documentação enriquecida
 app = FastAPI(
     title="CourseSphere API",
     description="""
-    API avançada de gestão de cursos e aulas com arquitetura Multitenant e RBAC.
-    - **Estudantes:** Podem consumir conteúdos e materiais de apoio.
-    - **Professores:** Podem gerir os seus próprios cursos, aulas e anexos.
-    - **Admin:** Pode promover utilizadores e moderar todo o conteúdo.
+🚀 **Plataforma Educacional Avançada com Inteligência Artificial**
+
+Esta API suporta um ecossistema completo de E-Learning assente numa arquitetura
+*Multitenant* e de Controlo de Acessos Baseado em Papéis (RBAC).
+
+### 🛠️ Funcionalidades Principais:
+* **Autenticação Segura:** Implementação nativa e isolada de JWT com o fluxo OAuth2.
+* **IA Integrada:** Geração automática de testes baseados no contexto das aulas.
+* **Camada de Autorização (RBAC):**
+  * 🎓 **Estudantes:** Consumo de conteúdo, progresso e resolução de provas.
+  * 👨‍🏫 **Professores:** Autoria total sobre cursos, módulos, anexos e métricas.
+  * 🛡️ **Admin:** Observabilidade global da plataforma, auditoria e privilégios.
+
+*(A documentação interativa abaixo permite testar as rotas em tempo real. Pressione o
+botão **Authorize** com credenciais válidas para injetar automaticamente o token).*
     """,
     version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    openapi_tags=tags_metadata,
     lifespan=lifespan,
     contact={
         "name": "Vinícius Leôncio",
         "url": "https://github.com/Lionzio",
         "email": "viniciusleoncio3267@gmail.com",
     },
+    license_info={
+        "name": "MIT License",
+        "url": "https://opensource.org/licenses/MIT",
+    },
 )
 
 # BUGFIX: Utilização de Regex para permitir qualquer porta no localhost/127.0.0.1.
-# Isto impede falhas de CORS caso o Vite salte da porta 5173 para 5174, 5175, etc.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -67,7 +151,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Registo dos roteadores com prefixos e tags para organização do Swagger
+# Registo dos roteadores com prefixos e tags mapeadas
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Autenticação & Contas"])
 app.include_router(
     admin_router, prefix="/api/v1/admin", tags=["Painel de Administração (RBAC)"]
@@ -75,22 +159,38 @@ app.include_router(
 app.include_router(courses_router, prefix="/api/v1/courses", tags=["Gestão de Cursos"])
 app.include_router(lessons_router, prefix="/api/v1", tags=["Gestão de Aulas (Lessons)"])
 app.include_router(
-    enrollments_router,
-    prefix="/api/v1/enrollments",
-    tags=["Matrículas & Progresso"],
+    enrollments_router, prefix="/api/v1/enrollments", tags=["Matrículas & Progresso"]
 )
-# Registro do roteador de materiais (Mantendo o padrão v1)
 app.include_router(
     materials_router, prefix="/api/v1", tags=["Gestão de Materiais de Apoio"]
 )
-
-# Registro do roteador de avaliações
 app.include_router(quizzes_router, prefix="/api/v1", tags=["Motor de Avaliações"])
-
 app.include_router(analytics_router, prefix="/api/v1/analytics", tags=["Analytics"])
 
 
-@app.get("/", tags=["Healthcheck"])
+@app.get(
+    "/",
+    tags=["Healthcheck"],
+    summary="Verificar Estado da API",
+    description=(
+        "Retorna o status operacional do serviço em formato JSON. Extremamente útil "
+        "para sondagens de *Uptime* e ferramentas de CI/CD garantirem a vitalidade."
+    ),
+    responses={
+        200: {
+            "description": "Serviço perfeitamente operacional",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "service": "CourseSphere API",
+                        "status": "Operando com sucesso",
+                        "version": "1.0.0",
+                    }
+                }
+            },
+        }
+    },
+)
 async def root():
     """Endpoint raiz para verificação de status (Healthcheck)."""
     return {

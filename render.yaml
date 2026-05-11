@@ -1,0 +1,32 @@
+# render.yaml
+# Definição de Infrastructure as Code (IaC) para o Render
+
+databases:
+  - name: coursesphere-db
+    databaseName: coursesphere
+    user: postgres
+    plan: free
+
+services:
+  - type: web
+    name: Lionzio-CourseSphere
+    runtime: docker
+    rootDir: backend
+    plan: free
+    healthCheckPath: /
+    # O Render deteta automaticamente o Dockerfile dentro de rootDir
+    envVars:
+      # sync: false garante que o Render não apagará os valores reais e sensíveis 
+      # que já configurámos manualmente no Dashboard (como o prefixo postgresql+asyncpg://)
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "1440"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
