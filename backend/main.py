@@ -1,3 +1,4 @@
+# backend/main.py
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -50,15 +51,17 @@ app = FastAPI(
     },
 )
 
-# Configuração de CORS para permitir a comunicação com o Frontend (Vite)
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
-
+# BUGFIX: Utilização de Regex para permitir qualquer porta no localhost/127.0.0.1.
+# Isto impede falhas de CORS caso o Vite salte da porta 5173 para 5174, 5175, etc.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost",
+        "http://127.0.0.1",
+    ],
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -84,6 +87,8 @@ app.include_router(
 # Registro do roteador de avaliações
 app.include_router(quizzes_router, prefix="/api/v1", tags=["Motor de Avaliações"])
 
+app.include_router(analytics_router, prefix="/api/v1/analytics", tags=["Analytics"])
+
 
 @app.get("/", tags=["Healthcheck"])
 async def root():
@@ -93,6 +98,3 @@ async def root():
         "status": "Operando com sucesso",
         "version": "1.0.0",
     }
-
-
-app.include_router(analytics_router, prefix="/api/v1/analytics", tags=["Analytics"])
