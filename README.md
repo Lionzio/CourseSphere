@@ -90,11 +90,14 @@ Para explorar a plataforma imediatamente sem a necessidade de criar um novo cada
 
 | Papel | Email | Senha | Permissões |
 | :--- | :--- | :--- | :--- |
-| **Admin** | `admin@coursesphere.com` | `admin1234` | Acesso total: gerir utilizadores, cursos e painel de administração |
-| **Professor** | `prof@coursesphere.com` | `prof1234` | Criar cursos, aulas, gerar quizzes com IA e avaliar provas |
-| **Estudante** | `student@coursesphere.com` | `student1234` | Visualizar cursos, realizar quizzes e acompanhar o seu progresso |
+| **Administrador** | `administrador1@gmail.com` | `administrador1` | **Acesso Total:** Gestão de utilizadores, auditoria e painel administrativo. |
+| **Professor** | `professor1@gmail.com` | `professor1` | **Gestão Pedagógica:** Criar cursos/aulas, IA Quiz Builder e correção manual. |
+| **Estudante 1** | `aluno1@gmail.com` | `aluno1` | **Aprendizagem:** Consumo de conteúdo, realização de quizzes e dashboards. |
+| **Estudante 2** | `aluno2@gmail.com` | `aluno2` | **Aprendizagem:** Segunda conta para testes de concorrência e progresso. |
 
-> 💡 **Dica:** Experimente tentar aceder a `/admin` com a conta de Estudante. O sistema irá bloquear o acesso tanto no frontend (guarda de rota) como no backend (middleware de autorização).
+> 📝 **Nota sobre Registos:** É possível criar uma conta nova através da página de Registo. Por padrão, **todo novo utilizador é registado como "Estudante"**. A alteração para o papel de "Professor" ou "Admin" deve ser realizada diretamente na base de dados ou através de um utilizador com privilégios de Administrador.
+
+> 💡 **Dica de Segurança:** Experimente tentar aceder à rota `/admin` autenticado como Estudante. O sistema bloqueará o acesso tanto no **Frontend** (Route Guards) como no **Backend** (Middleware de Autorização JWT), garantindo a integridade dos dados.
 
 ---
 
