@@ -131,7 +131,6 @@ jobs:
       - name: Executar Testes com Cobertura
         run: |
           pipenv run pytest \
-            --asyncio-mode=auto \
             --tb=short \
             --cov=. \
             --cov-report=term-missing \
@@ -173,7 +172,7 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Executar Testes (Vitest)
-        run: npm run test -- --run --config vitest.config.ts --reporter=verbose
+        run: npm run test -- --run --reporter=verbose
 
   # ============================================================
   # FASE 3A: DEPLOY — Backend (Render via Deploy Hook)
