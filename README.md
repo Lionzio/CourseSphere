@@ -22,7 +22,7 @@
 
 ## 🔗 Acesso Direto
 
-| 🎓 Aplicação em Produção | 📡 API & Documentação |
+| 🎓 Aplicação em produção | 📡 API & Documentação |
 |:---:|:---:|
 | **[lionzio-coursesphere.vercel.app](https://lionzio-coursesphere.vercel.app/login)** | **[lionzio-coursesphere.onrender.com/docs](https://lionzio-coursesphere.onrender.com/docs)** |
 | Interface completa com login, RBAC e IA | Swagger UI interativo com todos os endpoints |
@@ -90,9 +90,9 @@ Para testar a plataforma sem criar uma conta, utilize as credenciais abaixo. Cad
 
 | Papel | Email | Password | O que pode fazer |
 | :--- | :--- | :--- | :--- |
-| **Admin** | `admin@coursesphere.com` | `admin1234` | Acesso total: gerir utilizadores, cursos e painel de administração |
-| **Professor** | `prof@coursesphere.com` | `prof1234` | Criar cursos, aulas, gerar quizzes com IA e avaliar provas |
-| **Estudante** | `student@coursesphere.com` | `student1234` | Visualizar cursos, realizar quizzes e acompanhar o seu progresso |
+| **Admin** | `administrador1@gmail.com` | `administrador1` | Acesso total: gerir utilizadores, cursos e painel de administração |
+| **Professor** | `professor1@gmail.com.com` | `professor1` | Criar cursos, aulas, gerar quizzes com IA e avaliar provas |
+| **Estudante** | `aluno1@gmail.com` | `aluno1` | Visualizar cursos, realizar quizzes e acompanhar o seu progresso |
 
 > 💡 **Dica:** Experimente tentar aceder a `/admin` com a conta de Estudante. O sistema irá bloquear o acesso tanto no frontend (guarda de rota) como no backend (middleware de autorização).
 
