@@ -54,7 +54,8 @@ jobs:
           cache-dependency-path: './frontend/package-lock.json'
 
       - name: Instalar Dependências
-        run: npm install
+        # BUGFIX: --legacy-peer-deps ignora os conflitos estritos de peer dependencies entre o React 19 e o @testing-library/react 14
+        run: npm install --legacy-peer-deps
 
       - name: Executar Linter (ESLint)
         run: npm run lint
